@@ -1,0 +1,111 @@
+
+#-----------------------------------------------
+#Config that does not have impact on performance
+#-----------------------------------------------
+
+
+random_seed: 0b011011
+
+#-----------------------------------------------
+#1. Dataset
+#-----------------------------------------------
+
+dataset:
+# #directory that have every dataset in it.
+  wb_train: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.dev_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/train", 
+              ]
+  nb_train: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.dev_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/train", 
+              ]
+  wb_test: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.eval_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/test", 
+              ]
+  nb_test: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.eval_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/test", 
+              ]
+
+#So for this case, wideband test dataset should be located at "/media/zeroone/target/test"
+
+
+  batch_size: 32
+  seg_len: 0.9
+
+  ## Segment audio length
+  num_workers: 12
+ 
+#-----------------------------------------------
+#2. Model
+#-----------------------------------------------
+
+model:
+  generator: SEANet_TFiLM
+  # hubert, w2v, wavlm
+  ms_mel_loss_config:
+            n_fft_list: [32, 64, 128, 256, 512, 1024, 2048]
+            hop_ratio: 0.25
+            mel_bin_list: [5, 10, 20, 40, 80, 160, 320]
+            reduction: mean
+            loss_ratio: 1.0
+            sr: 48000
+  kmeans_path: "/home/woongjib/Projects/BESSL__/kmeans/K16_MAE.pkl"
+ 
+  discriminator: MBSTFTD
+  MultiBandSTFTDiscriminator_config:
+      C: 32
+      n_fft_list: [2048, 1024, 512]
+      hop_len_list: [512, 256, 128]
+      band_split_ratio:
+          - [0.0, 0.1]
+          - [0.1, 0.25]
+          - [0.25, 0.5]
+          - [0.5, 0.75]
+          - [0.75, 1.0]
+
+#-----------------------------------------------
+#3. Loss
+#-----------------------------------------------
+
+#-----------------------------------------------
+#4. Optimizer (ADAM)
+#-----------------------------------------------
+
+optim:
+  learning_rate: 0.0001
+  
+  B1: 0.5
+  B2: 0.9
+
+
+#-----------------------------------------------
+#Training
+#-----------------------------------------------
+
+train:
+  epoch_save_start: 1
+  val_epoch: 1
+  
+  ckpt_save_dir: "./ckpt_K16"
+  max_epochs: 100
+
+  devices:
+    - 0
+    #- 1
+    # -2 ... if you are using DDP
+
+  # True if load from previous
+  ckpt: False
+  ckpt_path: None
+
+#-----------------------------------------------
+#Predict (Inference)
+#-----------------------------------------------
+# My Eval **********************
+eval:
+  weight_path: "/home/woongjib/Projects/SSLBWE/sr/weights/wavlm_128_e100_codec.ckpt"
+
+

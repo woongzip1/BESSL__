@@ -1,0 +1,11 @@
+
+__pycache__
+ckpt_*/
+output*/
+
+wandb
+
+weights/
+kmeans/
+weights/*
+kmeans/*
