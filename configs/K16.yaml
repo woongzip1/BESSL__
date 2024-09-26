@@ -86,7 +86,7 @@ optim:
 #-----------------------------------------------
 
 train:
-  epoch_save_start: 1
+  epoch_save_start: 15
   val_epoch: 1
   
   ckpt_save_dir: "./ckpt_K16"

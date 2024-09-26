@@ -33,7 +33,6 @@ from dataset import CustomDataset
 from models.SEANet_TFiLM import SEANet_TFiLM
 from models.SEANet import SEANet
 # from ssdiscriminatorblock import MultiBandSTFTDiscriminator
-## /hdd0/woongzip/datasets/VCTK_0.92_crop
 
 DEVICE = f'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(f"DEVICE: {DEVICE}")
@@ -250,6 +249,7 @@ def main():
     args = parse_args()
     config = yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
     print(START_DATE)
+    
     wandb.init(project='BESSL_audio',
            entity='woongzip1',
            config=config,
@@ -257,33 +257,11 @@ def main():
            # mode='disabled',
            notes=NOTES)
 
-    path_wb = [
-                "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.dev_audio", 
-                "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/train", 
-                ]
-    path_nb = [
-                "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.dev_audio", 
-                "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/train", 
-                ]
-    train_dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=config['dataset']['seg_len'], mode="train")
-    
+    train_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_train'], 
+                                  path_dir_wb=config['dataset']['wb_train'], seg_len=config['dataset']['seg_len'], mode="train")
+    test_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], 
+                                 path_dir_wb=config['dataset']['wb_test'], seg_len=config['dataset']['seg_len'], mode="train")
 
-    path_wb = [
-                "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.eval_audio", 
-                "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/test", 
-                ]
-    path_nb = [
-                "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.eval_audio", 
-                "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/test", 
-                ]
-
-    test_dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=config['dataset']['seg_len'], mode="train")
-
-    # dataset_size = len(dataset)
-    # train_size = int(0.999 * dataset_size)
-    # test_size = dataset_size - train_size
-    # train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-    
     # Small dataset
     # train_dataset = SmallDataset(train_dataset, 100)
     test_dataset = SmallDataset(test_dataset, 3000) 
@@ -324,9 +302,7 @@ def main():
     warnings.filterwarnings("ignore", category=FutureWarning, message="`resume_download` is deprecated")
     warnings.filterwarnings("ignore", message=".*cudnnException: CUDNN_BACKEND_EXECUTION_PLAN_DESCRIPTOR.*")
 
-
     prepare_generator(config)
-
     # Prepare discriminator
     disc_type = config['model']['discriminator']
     if disc_type == "MSD":
@@ -468,7 +444,7 @@ def load_checkpoint(generator, discriminator, optimizer_G, optimizer_D, checkpoi
     generator.load_state_dict(checkpoint['generator_state_dict'])
     discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
     
-    start_epoch = checkpoint['epoch'] + 1
+    start_epoch = checkpoint['epoch'] 
     # best_pesq = checkpoint['pesq_score']
     best_lsdh = checkpoint['lsd_h']
     

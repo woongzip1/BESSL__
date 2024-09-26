@@ -40,7 +40,7 @@ print(f"DEVICE: {DEVICE}")
 
 ## Dictionary to store all models and information
 TPARAMS = {}
-NOTES = 'BESSL_baseline_local_E5-'
+NOTES = 'BESSL_baseline_local_E15-'
 START_DATE = NOTES +'_' + datetime.now().strftime("%Y%m%d-%H%M%S")
 MODEL_MAP = {
     "SEANet_TFiLM": SEANet_TFiLM,

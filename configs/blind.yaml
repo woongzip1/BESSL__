@@ -12,13 +12,24 @@ random_seed: 0b011011
 
 dataset:
 # #directory that have every dataset in it.
-  wb_train: " "
-  nb_train: " "
-  wb_test: " "
-  nb_test: " "
+  wb_train: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.dev_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/train", 
+              ]
+  nb_train: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.dev_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/train", 
+              ]
+  wb_test: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.eval_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/test", 
+              ]
+  nb_test: [
+              "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.eval_audio", 
+              "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/test", 
+              ]
 
 #So for this case, wideband test dataset should be located at "/media/zeroone/target/test"
-
 
   batch_size: 32
   seg_len: 0.9
@@ -74,11 +85,11 @@ optim:
 #-----------------------------------------------
 
 train:
-  epoch_save_start: 5
+  epoch_save_start: 15
   val_epoch: 1
   
   ckpt_save_dir: "./ckpt_baseline"
-  max_epochs: 100
+  max_epochs: 50
 
   devices:
     - 0
@@ -87,7 +98,7 @@ train:
 
   # True if load from previous
   ckpt: True
-  ckpt_path: "/home/woongjib/Projects/BESSL__/ckpt_baseline/epoch_5_lsdH_0.596.pth"
+  ckpt_path: "/home/woongjib/Projects/BESSL__/ckpt_baseline/epoch_15_lsdH_0.553.pth"
 
 #-----------------------------------------------
 #Predict (Inference)

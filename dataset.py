@@ -92,7 +92,8 @@ class CustomDataset(Dataset):
             # wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)
             # wav_nb = self.set_maxlen(wav_nb, max_lensec=5.12)
             # wav_wb = self.set_maxlen(wav_wb, max_lensec=5.12)
-            print('val')
+            # print('val')
+            pass
         else:
             sys.exit(f"unsupported mode! (train/val)")
 
