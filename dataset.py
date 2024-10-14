@@ -73,7 +73,7 @@ class CustomDataset(Dataset):
             duration = int(self.seg_len * self.sr)  
             sig_len = wav_wb.shape[-1]
 
-            t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 2]), size=1)[0]
+            t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 2]), size=1)[0] # random start
             if t_start % 2 == 1:
                 t_start -= 1
             t_end = t_start + duration
@@ -83,8 +83,8 @@ class CustomDataset(Dataset):
             wav_wb = wav_wb.repeat(1, t_end // sig_len + 1)[..., t_start:t_end]
             
             #### Length ensure
-            wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
-            wav_wb = self.ensure_length(wav_wb, sr_wb * self.seg_len)
+            # wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
+            # wav_wb = self.ensure_length(wav_wb, sr_wb * self.seg_len)
 
         elif self.mode == "val":
             # min_len = min(wav_wb.shape[-1], wav_nb.shape[-1])
@@ -102,7 +102,7 @@ class CustomDataset(Dataset):
         spec = self.normalize_spec(spec)
 
         # Extract Subbands from WB spectrogram
-        spec = self.extract_subband(spec, start=6, end=15)
+        spec = self.extract_subband(spec, start=6, end=31)
 
         return wav_wb, wav_nb, spec, get_filename(path_wav_wb)[0], label
 
@@ -148,7 +148,7 @@ class CustomDataset(Dataset):
         spec = (spec - norm_mean) / (norm_std * 2)
         return spec
     
-    def extract_subband(self, spec, start=6, end=15):
+    def extract_subband(self, spec, start=6, end=31):
         """ Get spectrogram Inputs and extract range of subbands : [start:end] """
         
         C,F,T = spec.shape

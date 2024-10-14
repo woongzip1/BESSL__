@@ -80,10 +80,10 @@ Input Shape: B x Patch x 6144
 Output Shape: B x Patch x 256 
 """
 class FeatureReduction(nn.Module):
-    def __init__(self):
+    def __init__(self, melpatch_num=10):
         super(FeatureReduction, self).__init__()
 
-        self.melpatch_num = 10
+        self.melpatch_num = melpatch_num
         self.patch_len = 512
         self.layers = nn.ModuleList([nn.Linear(self.patch_len,32) for _ in range(self.melpatch_num)])
         # 8 Feature Encoder 512x10 -> 32x10 dim
@@ -94,7 +94,7 @@ class FeatureReduction(nn.Module):
 
         outs = []
         for idx, layer in enumerate(self.layers):
-            patch_embeddings = embeddings[:, :, idx*self.patch_len:(idx+1)*self.patch_len]
+            patch_embeddings = embeddings[:, :, idx*self.patch_len:(idx+1)*self.patch_len] # extract per subband
             # print(idx, patch_embeddings.shape)
             out = layer(patch_embeddings)
             outs.append(out)
@@ -190,42 +190,42 @@ class SEANet_TFiLM(nn.Module):
             stride = 1,
         )
         
-    def quantize_input(self, input_tensor, visualize=False):
-        # input tensor: B x 512 x 10 x T
-        # print(input_tensor.shape)
-        input_tensor = rearrange(input_tensor, 'b d f t -> b t (d f)')
-        # print(input_tensor.shape)
+    # def quantize_input(self, input_tensor, visualize=False):
+    #     # input tensor: B x 512 x 10 x T
+    #     # print(input_tensor.shape)
+    #     input_tensor = rearrange(input_tensor, 'b d f t -> b t (d f)')
+    #     # print(input_tensor.shape)
 
 
-        B, T, _ = input_tensor.shape
-        kmeans_models = self.kmeans
-        num_patches = len(kmeans_models)
-        patch_size = 512  # Each patch has 768 dimensions
+    #     B, T, _ = input_tensor.shape
+    #     kmeans_models = self.kmeans
+    #     num_patches = len(kmeans_models)
+    #     patch_size = 512  # Each patch has 768 dimensions
 
-        quantized_output = []
+    #     quantized_output = []
 
-        for idx in range(num_patches):
-            patch_start = patch_size * idx
-            patch_end = patch_start + patch_size
+    #     for idx in range(num_patches):
+    #         patch_start = patch_size * idx
+    #         patch_end = patch_start + patch_size
 
-            # Extract the patch-specific embeddings
-            patch_embeddings = input_tensor[:, :, patch_start:patch_end]  # B x T x 768
-            patch_embeddings = patch_embeddings.reshape(-1, patch_size)  # (B*T) x 768
+    #         # Extract the patch-specific embeddings
+    #         patch_embeddings = input_tensor[:, :, patch_start:patch_end]  # B x T x 768
+    #         patch_embeddings = patch_embeddings.reshape(-1, patch_size)  # (B*T) x 768
             
-            # Use k-means model to quantize the patch embeddings
-            kmeans_model = kmeans_models[idx]
-            cluster_labels = kmeans_model.predict(patch_embeddings.cpu().numpy())  # (B*T)
-            quantized_patch = kmeans_model.cluster_centers_[cluster_labels]  # (B*T) x 768
+    #         # Use k-means model to quantize the patch embeddings
+    #         kmeans_model = kmeans_models[idx]
+    #         cluster_labels = kmeans_model.predict(patch_embeddings.cpu().numpy())  # (B*T)
+    #         quantized_patch = kmeans_model.cluster_centers_[cluster_labels]  # (B*T) x 768
 
-            # Reshape to original form and append to output
-            quantized_patch = torch.tensor(quantized_patch).reshape(B, T, -1)  # B x T x 768
-            if visualize: print(f"Patch {idx} quantized shape:", quantized_patch.shape)
-            quantized_output.append(quantized_patch)
+    #         # Reshape to original form and append to output
+    #         quantized_patch = torch.tensor(quantized_patch).reshape(B, T, -1)  # B x T x 768
+    #         if visualize: print(f"Patch {idx} quantized shape:", quantized_patch.shape)
+    #         quantized_output.append(quantized_patch)
 
-        # Concatenate all quantized patches along the last dimension
-        quantized_output = torch.cat(quantized_output, dim=-1)  # B x T x (8*768)
-        if visualize: print(f"Final quantized output shape: {quantized_output.size()}")
-        return quantized_output
+    #     # Concatenate all quantized patches along the last dimension
+    #     quantized_output = torch.cat(quantized_output, dim=-1)  # B x T x (8*768)
+    #     if visualize: print(f"Final quantized output shape: {quantized_output.size()}")
+    #     return quantized_output
 
     def length_adjustment(self, x, cond):
         """
