@@ -130,7 +130,7 @@ class SEANet_TFiLM(nn.Module):
         self.ssl_model = AutoEncoder_new(in_channels=in_channels)
         ##### load check points and do not freeze the model
         
-        # self.ssl_model.load_checkpoint(fe_weight_path)
+        self.ssl_model.load_checkpoint(fe_weight_path)
         self.ssl_model = self.ssl_model.encoder
 
         # Freeze SSL Parameters            

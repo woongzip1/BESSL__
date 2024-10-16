@@ -31,6 +31,8 @@ from MBSTFTD import MultiBandSTFTDiscriminator
 from dataset import CustomDataset
 
 from models.SEANet_TFiLM import SEANet_TFiLM
+from models.SEANet_TFiLM_nok_modified import SEANet_TFiLM as SEANet_TFiLM_nokmod
+
 from models.SEANet import SEANet
 # from ssdiscriminatorblock import MultiBandSTFTDiscriminator
 
@@ -44,6 +46,7 @@ START_DATE = NOTES +'_' + datetime.now().strftime("%Y%m%d-%H%M%S")
 MODEL_MAP = {
     "SEANet_TFiLM": SEANet_TFiLM,
     "SEANet": SEANet,
+    "SEANet_TFiLM_nokmod": SEANet_TFiLM_nokmod
     # "SEANet_v8": SEANet_v8,
     # "SEANet_v6": SEANet_v6,
     # "SEANet_v5": SEANet_v5,
@@ -213,18 +216,17 @@ def test_step(test_parameters, store_lr_hr=False):
                 # 'STOI': f'{stoi_score:.2f}'
             })
 
-            if i == 51 and store_lr_hr:  # For very first epoch
-                result['audio_lr'] = lr.squeeze().cpu().numpy()
-                result['audio_hr'] = hr.squeeze().cpu().numpy()
-                # result['audio_target'] = target.squeeze().cpu().numpy()
-                result['spec_lr'] = draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
-                result['spec_hr'] = draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
-                # result['spec_target'] = draw_spec(target.squeeze().cpu().numpy(),win_len=2048, use_colorbar=False, hop_len=1024, return_fig=True)
-            if i == 51:
-                result['audio_bwe'] = bwe.squeeze().cpu().numpy()
-                result['spec_bwe'] = draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, hop_len=1024, 
-                                               use_colorbar=False, return_fig=True)
-                # result['spec_bwe'].savefig("hihi.png")
+            # Optional: Store spectrograms for specific indices
+            if i in [5, 55, 505] and store_lr_hr:
+                key_suffix = f'_{i}'
+                result[f'audio_hr{key_suffix}'] = hr.squeeze().cpu().numpy()
+                # result[f'audio_input{key_suffix}'] = draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
+                result[f'audio_target{key_suffix}'] = draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
+                
+            if i in [5, 55, 505]:
+                key_suffix = f'_{i}'
+                result[f'audio_bwe{key_suffix}'] = bwe.squeeze().cpu().numpy()
+                result[f'audio_recon{key_suffix}'] = draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
 
             del lr, hr, bwe, loss_GAN, loss_FM, loss_mel, loss_D
 
@@ -250,7 +252,7 @@ def main():
     config = yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
     print(START_DATE)
     
-    wandb.init(project='BESSL_audio',
+    wandb.init(project='BESSL_p3',
            entity='woongzip1',
            config=config,
            name=START_DATE,
@@ -263,7 +265,7 @@ def main():
                                  path_dir_wb=config['dataset']['wb_test'], seg_len=config['dataset']['seg_len'], mode="train")
 
     # Small dataset
-    # train_dataset = SmallDataset(train_dataset, 100)
+    # train_dataset = SmallDataset(train_dataset, 300)
     test_dataset = SmallDataset(test_dataset, 3000) 
 
     print(f'Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(test_dataset)}\n')
@@ -327,7 +329,7 @@ def main():
                                           betas=(config['optim']['B1'],config['optim']['B2']))
     
     ################ Load Checkpoint if available
-    start_epoch = 1
+    start_epoch = 0
     best_lsdh = 1e10
 
     if config['train']['ckpt']:
@@ -339,8 +341,9 @@ def main():
             print(f"Checkpoint file not found at {checkpoint_path}. Starting training from scratch.")
 
     ################ Training Loop
-    print('Train Start!')
-    BAR = tqdm(range(start_epoch, config['train']['max_epochs'] + 1), position=0, leave=True)
+    print(f'Train Start! Start Epoch:{start_epoch+1}')
+    torch.manual_seed(42) # 42 seed
+    BAR = tqdm(range(start_epoch+1, config['train']['max_epochs'] + 1), position=0, leave=True)
     TPARAMS['generator'].to(DEVICE)
     TPARAMS['discriminator'].to(DEVICE)
     best_LSD = 1e10
@@ -411,6 +414,10 @@ def prepare_generator(config):
         model_params['decoder_depth'] = 16
     if gen_type == "SEANet_TFiLM":
         model_params['kmeans_model_path'] = config['model']['kmeans_path']
+    if gen_type == "SEANet_TFiLM_nokmod":
+        model_params['in_channels'] = config['model']['in_channels']
+        model_params['fe_weight_path'] = config['model']['fe_weight_path']
+        # fe weight path
 
     # Instantiate the model
     print(ModelClass)

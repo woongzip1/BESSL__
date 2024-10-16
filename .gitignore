@@ -1,6 +1,7 @@
 
 __pycache__
 ckpt_*/
+ckpts/*
 output*/
 
 wandb
@@ -9,4 +10,8 @@ weights/
 kmeans/
 weights/*
 kmeans/*
- 
+configs/*
+
+draw_losscurve.ipynb
+demo_eval___*.ipynb
+

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from models.SEANet import SEANet
 from models.SEANet_TFiLM import SEANet_TFiLM
 from models.SEANet_TFiLM_nok import SEANet_TFiLM as SEANet_TFiLM_nok
+from models.SEANet_TFiLM_nok_modified import SEANet_TFiLM as SEANet_TFiLM_nokmod
 
 from dataset import CustomDataset
 from utils import draw_spec, lsd_batch
@@ -126,26 +127,30 @@ def main():
     # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_Crop"]
 
     # HE-AAC
-    path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
-    path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop"]
+    # path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
+    # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop"]
 
     dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val")
 
     ################### Model
-    # TFiLM 64
-    model = SEANet_TFiLM(kmeans_model_path="/home/woongjib/Projects/BESSL__/kmeans/K64_MAE.pkl")
-    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_K64/epoch_41_lsdH_0.441.pth")
+    # # TFiLM 64
+    # model = SEANet_TFiLM(kmeans_model_path="/home/woongjib/Projects/BESSL__/kmeans/K64_MAE.pkl")
+    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_K64/epoch_41_lsdH_0.441.pth")
     
-    # No K
-    model = SEANet_TFiLM_nok(kmeans_model_path=None)
-    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_nok/epoch_13_lsdH_0.430.pth")
+    # # No K
+    # model = SEANet_TFiLM_nok(kmeans_model_path=None)
+    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_nok/epoch_13_lsdH_0.430.pth")
+    
+    # No K Modified
+    model = SEANet_TFiLM_nokmod(kmeans_model_path=None, in_channels=64)
+    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64m/epoch_6_lsdH_0.418.pth")
 
     # Blind
     # model = SEANet()
     # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_baseline/epoch_26_lsdH_0.550.pth")
 
     # Output 디렉토리 설정
-    output_dir = "output_samples_tempor"
+    output_dir = "output_samples_tempor2"
     # output_dir = "output_samples_noK_"
     os.makedirs(output_dir, exist_ok=True)
 
