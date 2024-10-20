@@ -13,20 +13,20 @@ random_seed: 0b011011
 dataset:
 # #directory that have every dataset in it.
   wb_train: [
-              "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.dev_audio", 
-              "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/train", 
+              "/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT/FSD50K.dev_audio", 
+              "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT/train", 
               ]
   nb_train: [
-              "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.dev_audio", 
-              "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/train", 
+              "/home/woongjib/Projects/Dataset/FSD50K_LPF/FSD50K.dev_audio", 
+              "/home/woongjib/Projects/Dataset/MUSDB_LPF/train", 
               ]
   wb_test: [
-              "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.eval_audio", 
-              "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/test", 
+              "/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT/FSD50K.eval_audio", 
+              "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT/test", 
               ]
   nb_test: [
-              "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.eval_audio", 
-              "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/test", 
+              "/home/woongjib/Projects/Dataset/FSD50K_LPF/FSD50K.eval_audio", 
+              "/home/woongjib/Projects/Dataset/MUSDB_LPF/test", 
               ]
 
 #So for this case, wideband test dataset should be located at "/media/zeroone/target/test"
@@ -35,7 +35,7 @@ dataset:
   seg_len: 0.9
 
   ## Segment audio length
-  num_workers: 20
+  num_workers: 8
  
 #-----------------------------------------------
 #2. Model
@@ -53,6 +53,7 @@ model:
             sr: 48000
   kmeans_path: None
  
+  min_dim: 12
   discriminator: MBSTFTD
   MultiBandSTFTDiscriminator_config:
       C: 32
@@ -97,14 +98,5 @@ train:
     # -2 ... if you are using DDP
 
   # True if load from previous
-  ckpt: True
+  ckpt: False
   ckpt_path: "/home/woongjib/Projects/BESSL__/ckpt_baseline/epoch_15_lsdH_0.553.pth"
-
-#-----------------------------------------------
-#Predict (Inference)
-#-----------------------------------------------
-# My Eval **********************
-eval:
-  weight_path: "/home/woongjib/Projects/SSLBWE/sr/weights/wavlm_128_e100_codec.ckpt"
-
-

@@ -12,6 +12,8 @@ weights/*
 kmeans/*
 configs/*
 
+!configs/D32mindim16.yaml
+
 draw_losscurve.ipynb
 demo_eval___*.ipynb
 

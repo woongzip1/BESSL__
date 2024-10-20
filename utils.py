@@ -233,50 +233,32 @@ def SmallDataset(dataset, num_samples):
     subset = Subset(dataset, random_indices)
     return subset
 
-# def load_generator(config, ckpt_path, device='cuda'):
-#     if ckpt_path.endswith('.ckpt'):
-#         # Load the full model from RTBWETrain (old version)
-#         model = RTBWETrain.load_from_checkpoint(checkpoint_path=ckpt_path, config=config).to(device).eval()
-#         generator = model.generator
-#         epoch, pesq_score, lsd = model.current_epoch, None, None  # Placeholder values, modify as needed
-#         print("***************")
-#         print(f"Checkpoint loaded from: {ckpt_path}")
-#         print(f"Generator: {type(generator).__name__}")
+from scipy.signal import firwin, lfilter, freqz
+def lpf(y, sr=16000, cutoff=500, plot_resp=False, window='hamming', figsize=(10,2)):
+    """ 
+    Applies FIR filter
+    cutoff freq: cutoff freq in Hz
+    """
+    nyquist = 0.5 * sr
+    normalized_cutoff = cutoff / nyquist
+    taps = firwin(numtaps=200, cutoff=normalized_cutoff, window=window)
+    y_lpf = lfilter(taps, 1.0, y)
+    # y_lpf = np.convolve(y, taps, mode='same')
+    
+    # plt.plot(taps)
+    # plt.show()
+    if plot_resp:
+        w, h = freqz(taps, worN=8000)
+        plt.figure(figsize=figsize)
+        plt.plot(0.5*sr*w/np.pi, np.abs(h), 'b')
+        plt.title("FIR Filter Frequency Response")
+        plt.xlabel('Frequency [Hz]')
+        plt.ylabel('Gain')
+        plt.xlim(0, sr/2)
+        plt.grid()
+        plt.show()
 
-#     elif ckpt_path.endswith('.pth'):
-#         # Load the generator from the new version checkpoint
-#         generator_type = config['model']['generator']
-#         if generator_type == 'SEANet':
-#             generator = SEANet(min_dim=8, causality=True)
-#             print("***************")
-#             print("SEANet Generator")
-#         elif generator_type == 'NewSEANet':
-#             generator = NewSEANet(min_dim=8, 
-#                                   kmeans_model_path=config['model']['kmeans_path'],
-#                                   modelname=config['model']['sslname'],
-#                                   causality=True)
-#             print("***************")
-#             print(f"NewSEANet Generator")
-#             print(f"SSL Model: {config['model']['sslname']}")
-#             print(f"KMeans Model: {os.path.splitext(os.path.basename(config['model']['kmeans_path']))[0]}")
-#         else:
-#             raise ValueError(f"Unsupported generator type: {generator_type}")
-        
-#         # Load the checkpoint
-#         checkpoint = torch.load(ckpt_path, map_location=torch.device(device))
-#         # Load the generator state dict
-#         generator.load_state_dict(checkpoint['generator_state_dict'])
-#         # Get additional information if needed
-#         epoch = checkpoint['epoch']
-#         pesq_score = checkpoint['pesq_score']
-#         lsd = checkpoint.get('lsd', 0)
-#         print(f"Checkpoint loaded from: {ckpt_path}")
-#         print(f"Epoch: {epoch}, PESQ Score: {pesq_score:.2f}, LSD: {lsd:.2f}")
-#         print("***************")
-#     else:
-#         raise ValueError(f"Unsupported checkpoint file extension: {ckpt_path}")
-
-#     return generator
+    return y_lpf
 
 from pystoi import stoi
 def py_stoi(clean_audio, processed_audio, sample_rate=16000):

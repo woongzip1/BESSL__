@@ -248,6 +248,8 @@ def test_step(test_parameters, store_lr_hr=False):
 def main():
     ################ Read Config Files
     torch.manual_seed(42)
+    random.seed(42)
+    
     args = parse_args()
     config = yaml.load(open(args.config, "r"), Loader=yaml.FullLoader)
     print(START_DATE)
@@ -255,18 +257,23 @@ def main():
     wandb.init(project='BESSL_p3',
            entity='woongzip1',
            config=config,
-           name=START_DATE,
+           name=config['run_name'],
            # mode='disabled',
-           notes=NOTES)
+           notes=config['run_name'])
 
     train_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_train'], 
                                   path_dir_wb=config['dataset']['wb_train'], seg_len=config['dataset']['seg_len'], mode="train")
-    test_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], 
-                                 path_dir_wb=config['dataset']['wb_test'], seg_len=config['dataset']['seg_len'], mode="train")
+    # test_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], 
+                                #  path_dir_wb=config['dataset']['wb_test'], seg_len=config['dataset']['seg_len'], mode="train")
 
+    train_size = int(0.99 * len(train_dataset))
+    test_size = len(train_dataset) - train_size
+    train_dataset, test_dataset = random_split(train_dataset, [train_size,test_size])
+    
     # Small dataset
     # train_dataset = SmallDataset(train_dataset, 300)
-    test_dataset = SmallDataset(test_dataset, 3000) 
+    # test_dataset = SmallDataset(test_dataset, 3000) 
+    
 
     print(f'Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(test_dataset)}\n')
 
@@ -401,7 +408,7 @@ def prepare_generator(config):
 
     # Base parameters
     model_params = {
-        "min_dim": 8,
+        "min_dim": config['model']['min_dim'],
         "causality": True
     }
     # Add additional parameters based on generator type
@@ -417,6 +424,7 @@ def prepare_generator(config):
     if gen_type == "SEANet_TFiLM_nokmod":
         model_params['in_channels'] = config['model']['in_channels']
         model_params['fe_weight_path'] = config['model']['fe_weight_path']
+        model_params['min_dim'] = config['model']['min_dim']
         # fe weight path
 
     # Instantiate the model

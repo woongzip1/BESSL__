@@ -16,12 +16,13 @@ class CustomDataset(Dataset):
     path_dir_nb=["/mnt/hdd/Dataset/FSD50K_16kHz_codec",
                  "/mnt/hdd/Dataset/MUSDB18_MP3_8k"],
                  """
-    def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train"):
+    def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train", high_index=31):
         assert isinstance(path_dir_nb, list), "PATH must be a list"
 
         self.seg_len = seg_len
         self.mode = mode
         self.sr = sr
+        self.high_index = high_index
 
         paths_wav_wb = []
         paths_wav_nb = []
@@ -69,34 +70,46 @@ class CustomDataset(Dataset):
         wav_wb = wav_wb.view(1, -1)
         wav_nb = wav_nb.view(1, -1)
 
+        
+        # if path_wav_wb == "/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT/FSD50K.dev_audio/103434_mono_segment_8.wav":
+        #     print(wav_nb.shape[-1], self.seg_len)
+               
+
         if self.seg_len > 0 and self.mode == "train":
             duration = int(self.seg_len * self.sr) #43200
             sig_len = wav_nb.shape[-1] # 43200 or 48000
 
             if sig_len < duration:
                 "crop out 100 nb and repeat"
-                print('short')
+                # print('short')
                 t_start = 0
                 t_end = t_start + duration # 43200
-                wav_nb = wav_nb[...,100:]
-                wav_wb = wav_wb[...,:-100]
+                wav_nb = wav_nb[...,100:sig_len]
+                wav_wb = wav_wb[...,:sig_len-100]
                 wav_nb = wav_nb.repeat(1, t_end // sig_len + 1)[..., :duration]
                 wav_wb = wav_wb.repeat(1, t_end // sig_len + 1)[..., :duration]
+                wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
+                wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)                
                 
             elif sig_len > 43200:
                 "crop out 100"
-                print('long')
-                t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 200]), size=1)[0]
-                t_end = t_start + duration
-                wav_nb = wav_nb[...,100+t_start:100+t_end]
-                wav_wb = wav_wb[...,t_start:t_end]
+                # print('long')
+                # t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 300]), size=1)[0]
+                
+                # t_end = t_start + duration
+                wav_nb = wav_nb[...,100:100+duration]
+                wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
+                ## siglen이 43296, 43300보다는 작을 때는 어떻게 할래?
+                wav_wb = wav_wb[...,:duration]
                 
             elif sig_len == 43200:
-                wav_nb = wav_nb[...,:]
+                wav_nb = wav_nb[...,:duration]
                 wav_wb = wav_wb[...,:duration]
             else:
                 ValueError(f"wrong nb length for {path_wav_nb}")
 
+            # wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
+            # wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)
             
             # # t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 2]), size=1)[0] # random start
             # # if t_start % 2 == 1:
@@ -112,14 +125,15 @@ class CustomDataset(Dataset):
             # wav_wb = self.ensure_length(wav_wb, sr_wb * self.seg_len)
 
         elif self.mode == "val":
-            ### Need to be modified
-            # min_len = min(wav_wb.shape[-1], wav_nb.shape[-1])
-            # wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
-            # wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)
-            # wav_nb = self.set_maxlen(wav_nb, max_lensec=5.12)
-            # wav_wb = self.set_maxlen(wav_wb, max_lensec=5.12)
-            # print('val')
-            pass
+            sig_len = wav_nb.shape[-1] # 0 - 10100 <> 0 - 10100 >> 100 - 10100
+            
+            if sig_len > 43200:
+                wav_nb = wav_nb[...,100:sig_len]
+                wav_wb = wav_wb[...,:sig_len-100]
+            
+            if wav_nb.shape[-1] != wav_wb.shape[-1]:
+                ValueError(f"nb wb shapes are different! {len(wav_nb.shape[-1], len(wav_nb.shape[-1]))}")
+            
         else:
             sys.exit(f"unsupported mode! (train/val)")
 
@@ -128,9 +142,10 @@ class CustomDataset(Dataset):
         spec = self.normalize_spec(spec)
 
         # Extract Subbands from WB spectrogram
-        spec = self.extract_subband(spec, start=6, end=31)
+        spec = self.extract_subband(spec, start=6, end=self.high_index)
 
         return wav_wb, wav_nb, spec, get_filename(path_wav_wb)[0], label
+        # return wav_wb, wav_nb, spec, path_wav_wb, label
 
     @staticmethod
     def ensure_length(wav, target_length):

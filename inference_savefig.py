@@ -113,55 +113,55 @@ def main():
     # dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val")
  
     # 1 sec
-    path_wb = [
-                "/mnt/hdd/Dataset_BESSL/FSD50K_WB_SEGMENT/FSD50K.eval_audio", 
-                "/mnt/hdd/Dataset_BESSL/MUSDB_WB_SEGMENT/test", 
-                ]
-    path_nb = [
-                "/mnt/hdd/Dataset_BESSL/FSD50K_NB_SEGMENT/FSD50K.eval_audio", 
-                "/mnt/hdd/Dataset_BESSL/MUSDB_NB_SEGMENT/test", 
-                ]
-    
+   
     # # For HE-AAC
     # path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
     # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_Crop"]
-
-    # HE-AAC
-    # path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
-    # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop"]
-
-    dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val")
+    
+    # USACMonoDataset
+    path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
+    path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop"]
+    dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val", high_index=31)
+    
 
     ################### Model
     # # TFiLM 64
     # model = SEANet_TFiLM(kmeans_model_path="/home/woongjib/Projects/BESSL__/kmeans/K64_MAE.pkl")
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_K64/epoch_41_lsdH_0.441.pth")
+    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_BESSL_AAC13.5/ckpt_K64/epoch_41_lsdH_0.441.pth")
     
     # # No K
-    # model = SEANet_TFiLM_nok(kmeans_model_path=None)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_nok/epoch_13_lsdH_0.430.pth")
+    model = SEANet_TFiLM_nok(kmeans_model_path=None)
+    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_BESSL_AAC13.5/ckpt_nok/epoch_13_lsdH_0.430.pth")
     
-    # No K Modified
+    # No K Modified FT
+    # model = SEANet_TFiLM_nokmod(kmeans_model_path=None, in_channels=64)
+    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64FT_T4/epoch_10_lsdH_0.426.pth")
+    
+    # No K mod
     model = SEANet_TFiLM_nokmod(kmeans_model_path=None, in_channels=64)
-    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64m/epoch_6_lsdH_0.418.pth")
+    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64m_data/epoch_44_lsdH_0.349.pth")
+
 
     # Blind
     # model = SEANet()
     # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_baseline/epoch_26_lsdH_0.550.pth")
 
     # Output 디렉토리 설정
-    output_dir = "output_samples_tempor2"
-    # output_dir = "output_samples_noK_"
+    output_dir = "outputs/temptemp"
     os.makedirs(output_dir, exist_ok=True)
 
     # Random
     torch.manual_seed(42)
     np.random.seed(42)
-    NUMSAMPLES = 3
+    datasetlen = len(dataset)
+    NUMSAMPLES = 8
     indices = torch.randperm(len(dataset))[:NUMSAMPLES]  # 랜덤하게 20개 샘플 추출
+    # indices = torch.randperm(len(dataset))  # 랜덤하게 20개 샘플 추출
+
     print(indices)
     lsd_list = []
     lsd_highlist = []
+    lsd_highlist2 = []
 
     import warnings
     warnings.filterwarnings("ignore", message=".*nperseg = .*")
@@ -178,12 +178,15 @@ def main():
             recon = model(nb.to(DEVICE), spec.to(DEVICE)).detach()
 
         # LSD 계산
-        lsd = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000)
+        lsd = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000) 
         print(lsd)
         lsd_list.append(lsd)        
         # LSD 계산
         lsd_high = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=4500, cutoff_freq=24000)
         lsd_highlist.append(lsd_high)
+
+        lsd_high2 = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=0, cutoff_freq=4500)
+        lsd_highlist2.append(lsd_high2)
 
         # draw_spec을 사용해 스펙트로그램을 생성하고 저장
         wb_spec = draw_spec(wb.cpu().squeeze().numpy(), sr=48000, return_fig=False, vmin=-50, vmax=40)
@@ -194,21 +197,27 @@ def main():
         visualize_combined_spectrogram(wb_spec, nb_spec, recon_spec, index=idx, name=name, output_dir=output_dir, vmin=-50, vmax=40,
                                        save_separate=False, plot_colorbar=False)
 
-        # recon_spec = recon_spec.squeeze()
+        from utils import lpf
+        recon_lpf = lpf(recon.cpu().squeeze(), sr=48000, cutoff=12000) # lpf
+        
+        sf.write(f"{output_dir}/{name}_lpf.wav", recon_lpf.squeeze(), format="WAV", samplerate=48000)
         sf.write(f"{output_dir}/{name}.wav", recon.cpu().squeeze(), format="WAV", samplerate=48000)
         sf.write(f"{output_dir}/{name}_gt.wav", wb.cpu().squeeze(), format="WAV", samplerate=48000)
         sf.write(f"{output_dir}/{name}_nb.wav", nb.cpu().squeeze(), format="WAV", samplerate=48000)
-        # sf.write(f"{output_dir}/{name}.wav", nb.cpu().squeeze(), format="WAV", samplerate=48000)
-
-        # ta.save(f"output_samples/{idx}.wav", recon_spec, sample_rate=48000)
-        # sf.write(f"{output_dir}/{name}_GT.wav", wb.cpu().squeeze(), format="WAV",samplerate=48000)
-
     
     # LSD 및 LSD High 평균 계산 및 출력
     average_lsd = sum(lsd_list) / len(lsd_list)
     average_lsd_high = sum(lsd_highlist) / len(lsd_highlist)
+    average_lsd_high_high = sum(lsd_highlist2) / len(lsd_highlist2)
+
     print(f"\nAverage LSD for the 20 samples: {average_lsd:.4f}")
     print(f"Average LSD High for the 20 samples: {average_lsd_high:.4f}")
+
+    log_file = f"{output_dir}/log.txt"
+    with open(log_file, 'a') as f:
+        f.write(f"Average LSD: {average_lsd:.4f}\n")
+        f.write(f"Average LSD High: {average_lsd_high:.4f}\n")
+        f.write(f"Average LSD low: {average_lsd_high_high:.4f}\n")
 
 if __name__ == "__main__":
     main()

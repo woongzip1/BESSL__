@@ -130,7 +130,7 @@ class SEANet_TFiLM(nn.Module):
         self.ssl_model = AutoEncoder_new(in_channels=in_channels)
         ##### load check points and do not freeze the model
         
-        self.ssl_model.load_checkpoint(fe_weight_path)
+        # self.ssl_model.load_checkpoint(fe_weight_path)
         self.ssl_model = self.ssl_model.encoder
 
         # Freeze SSL Parameters            
@@ -141,18 +141,18 @@ class SEANet_TFiLM(nn.Module):
         self.subband_num = 26
         self.EmbeddingReduction = FeatureReduction(self.subband_num, D=in_channels*8)
         
-        self.FiLM_e1 = FiLMLayer(subband_num=self.subband_num, n_channels=16, visualize=self.visualize)
-        self.FiLM_e2 = FiLMLayer(subband_num=self.subband_num, n_channels=32, visualize=self.visualize)
-        self.FiLM_e3 = FiLMLayer(subband_num=self.subband_num, n_channels=64, visualize=self.visualize)
-        self.FiLM_e4 = FiLMLayer(subband_num=self.subband_num, n_channels=128, visualize=self.visualize)
+        self.FiLM_e1 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*2, visualize=self.visualize)
+        self.FiLM_e2 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*4, visualize=self.visualize)
+        self.FiLM_e3 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*8, visualize=self.visualize)
+        self.FiLM_e4 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*16, visualize=self.visualize)
 
-        self.FiLM_b1 = FiLMLayer(subband_num=self.subband_num, n_channels=32, visualize=self.visualize)
-        self.FiLM_b2 = FiLMLayer(subband_num=self.subband_num, n_channels=128, visualize=self.visualize)
+        self.FiLM_b1 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*4, visualize=self.visualize)
+        self.FiLM_b2 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*16, visualize=self.visualize)
 
-        self.FiLM_d1 = FiLMLayer(subband_num=self.subband_num, n_channels=64)
-        self.FiLM_d2 = FiLMLayer(subband_num=self.subband_num, n_channels=32)
-        self.FiLM_d3 = FiLMLayer(subband_num=self.subband_num, n_channels=16)
-        self.FiLM_d4 = FiLMLayer(subband_num=self.subband_num, n_channels=8)
+        self.FiLM_d1 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*8)
+        self.FiLM_d2 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*4)
+        self.FiLM_d3 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*2)
+        self.FiLM_d4 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim)
 
         ## First Conv Layer
         self.conv_in = Conv1d(
@@ -290,10 +290,11 @@ class SEANet_TFiLM(nn.Module):
         ##
         
         embedding = self.EmbeddingReduction(embedding) # 6144 -> 256
-        # if self.visualize: 
-        #     print("Input Signal Length:", x.shape[2], " Fragment:", fragment.shape)
-        #     print("Patch len:", patch_len)
-        #     print(embedding.shape, "EMBEDDING SHAPE")
+        if self.visualize: 
+            print("Input Signal Length:", x.shape[2], " Fragment:", fragment.shape)
+            print("Patch len:", patch_len)
+            print(embedding.shape, "EMBEDDING SHAPE")
+            print(x.shape, "input shape")
 
         ################## Forward
         # Conv
@@ -303,7 +304,7 @@ class SEANet_TFiLM(nn.Module):
 
         if self.visualize: 
             print(embedding.shape, "EMBEDDING: B x L x F")
-            print(x.shape, "Conv Feature: B x F x L")
+            print(x.shape, "After 1st Conv Feature: B x F x L")
 
         # Enc
         film_list = [self.FiLM_e1, self.FiLM_e2, self.FiLM_e3, self.FiLM_e4]
