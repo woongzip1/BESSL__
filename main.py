@@ -1,14 +1,8 @@
-import torchaudio as ta
-import torchaudio.transforms as T
 import torch
-import numpy as np
 import yaml
 # import mir_eval
 import gc
-
 import warnings
-# from train import RTBWETrain
-# from datamodule import *
 from utils import *
 
 from tqdm import tqdm
@@ -16,12 +10,9 @@ import wandb
 from pesq import pesq
 from pystoi import stoi
 import random
-from torch.utils.data import Subset
-import soundfile as sf
 from datetime import datetime
-import sys
-import torch.nn.functional as F
 import argparse
+import torch.optim as optim
 
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 # from SEANet_v2 import SEANet_ver2
@@ -32,9 +23,8 @@ from dataset import CustomDataset
 
 from models.SEANet_TFiLM import SEANet_TFiLM
 from models.SEANet_TFiLM_nok_modified import SEANet_TFiLM as SEANet_TFiLM_nokmod
-
+from models.SEANet_TFiLM_RVQ import SEANet_TFiLM as SEANet_TFiLM_RVQ
 from models.SEANet import SEANet
-# from ssdiscriminatorblock import MultiBandSTFTDiscriminator
 
 DEVICE = f'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(f"DEVICE: {DEVICE}")
@@ -46,11 +36,8 @@ START_DATE = NOTES +'_' + datetime.now().strftime("%Y%m%d-%H%M%S")
 MODEL_MAP = {
     "SEANet_TFiLM": SEANet_TFiLM,
     "SEANet": SEANet,
-    "SEANet_TFiLM_nokmod": SEANet_TFiLM_nokmod
-    # "SEANet_v8": SEANet_v8,
-    # "SEANet_v6": SEANet_v6,
-    # "SEANet_v5": SEANet_v5,
-    # "NewSEANet": NewSEANet,
+    "SEANet_TFiLM_nokmod": SEANet_TFiLM_nokmod,
+    "SEANet_TFiLM_RVQ": SEANet_TFiLM_RVQ,
 }
 
 def parse_args():
@@ -59,191 +46,152 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def wandb_log(loglist, epoch, note):
-    for key, val in loglist.items():
-        if isinstance(val, torch.Tensor):
-            item = val.cpu().detach().numpy()
-        else:
-            item = val
-        try:
-            if isinstance(item, float):
-                log = item
-            elif isinstance(item, plt.Figure):
-                log = wandb.Image(item)
-                plt.close(item)
-            elif item.ndim in [2, 3]:  # 이미지 데이터
-                log = wandb.Image(item, caption=f"{note.capitalize()} {key.capitalize()} Epoch {epoch}")
-            elif item.ndim == 1:  # 오디오 데이터
-                log = wandb.Audio(item, sample_rate=48000, caption=f"{note.capitalize()} {key.capitalize()} Epoch {epoch}")
-            else:
-                log = item
-        except Exception as e:
-            print(f"Failed to log {key}: {e}")
-            log = item
-
-        wandb.log({
-            f"{note.capitalize()} {key.capitalize()}": log,
-        }, step=epoch)
-
 #########################
+def compute_loss(discriminator, bwe, hr, params, commitment_loss, codebook_loss):
+    # Compute generator loss
+    loss_GAN, loss_FM, loss_mel = discriminator.loss_G(bwe, hr)
+    loss_G = (
+        params['lambda_mel_loss'] * loss_mel +
+        params['lambda_fm_loss'] * loss_FM +
+        params['lambda_adv_loss'] * loss_GAN + 
+        params['lambda_commitment_loss'] * commitment_loss + 
+        params['lambda_codebook_loss'] * codebook_loss
+    )
+    return loss_G, loss_GAN, loss_FM, loss_mel
+
 
 def train_step(train_parameters):
     train_parameters['generator'].train()
     train_parameters['discriminator'].train()
-    result = {}
-    result['loss_G'] = 0
-    result['loss_D'] = 0
-    result['FM_loss'] = 0  
-    result['Mel_loss'] = 0 
+    result = {
+        'loss_G_total': 0, 'loss_D': 0,
+        'FM_loss': 0, 'GAN_loss': 0, 'Mel_loss': 0,
+        'codebook_loss': 0, 'commitment_loss': 0,
+    }
 
     train_bar = tqdm(train_parameters['train_dataloader'], desc="Train", position=1, leave=False, disable=False)
-    i = 0
 
-    # Train DataLoader Loop
-    # Epoch 1개만큼 train
+    # Train DataLoader Loop in one epoch
     for hr, lr, cond, _, _ in train_bar:
-        i += 1
-        lr = lr.to(DEVICE)
-        hr = hr.to(DEVICE)
-        cond = cond.to(DEVICE)
-        # with autocast():
-        bwe = train_parameters['generator'](lr, cond)
-        
-        del lr
-        torch.cuda.empty_cache()
-        '''
-        Train Generator
-        '''        
+        lr, hr, cond = lr.to(DEVICE), hr.to(DEVICE), cond.to(DEVICE)
+        if train_parameters['lambda_codebook_loss'] != 0:
+            bwe, commitment_loss, codebook_loss = train_parameters['generator'](lr, cond)
+        else:
+            bwe = train_parameters['generator'](lr, cond)
+            commitment_loss, codebook_loss = 0, 0
+            
+        # Train Generator     
+        loss_G, loss_GAN, loss_FM, loss_mel = compute_loss(train_parameters['discriminator'], bwe, hr, train_parameters, commitment_loss, codebook_loss)
+        # loss_G = loss_GAN + 100*loss_FM + loss_mel
         train_parameters['optim_G'].zero_grad()
-        _, loss_GAN, loss_FM, loss_mel = train_parameters['discriminator'].loss_G(bwe, hr)
-        ## MS Mel Loss
-        loss_G = loss_GAN + 100*loss_FM + loss_mel
         loss_G.mean().backward()
         train_parameters['optim_G'].step()
 
-        '''
-        Discriminator
-        '''
+        # Train Discriminator
         train_parameters['optim_D'].zero_grad()
         loss_D = train_parameters['discriminator'].loss_D(bwe, hr)
         loss_D.mean().backward()
         train_parameters['optim_D'].step()
-
-        del bwe
-        torch.cuda.empty_cache()
         
-        result['loss_G'] += loss_G.item()
-        result['loss_D'] += loss_D.item()
-        result['FM_loss'] += loss_FM.item()  # FM loss 추가
-        result['Mel_loss'] += loss_mel.item()  # Mel loss 추가
+        # Log
+        result['loss_G_total'] += loss_G.detach().item()
+        result['loss_D'] += loss_D.detach().item()
+        result['GAN_loss'] += loss_GAN.detach().item()
+        result['FM_loss'] += loss_FM.detach().item()  # FM loss 추가
+        result['Mel_loss'] += loss_mel.detach().item()  # Mel loss 추가
+
+        if train_parameters['lambda_codebook_loss'] != 0:
+                result['commitment_loss']  += commitment_loss.detach().item()
+                result['codebook_loss']  += codebook_loss.detach().item()
+        else: 
+            pass
 
         train_bar.set_postfix({
-                'Loss G': f'{loss_G.item():.2f}',
-                'FM loss': f'{loss_FM.item():.2f}',
-                'Mel loss': f'{loss_mel.item():.2f}',
-                'Loss D': f'{loss_D.item():.2f}'
-            })
-        
-        del hr, cond, loss_D, loss_GAN, loss_FM, loss_mel
-        gc.collect()
+            # 'Loss G': f'{loss_G.item():.2f}',
+            # 'Loss D': f'{loss_D.item():.2f}',
+            'CB Loss': f'{codebook_loss.detach().item():.2f}',
+            'FM Loss': f'{loss_FM.item():.2f}',
+            'Mel Loss': f'{loss_mel.item():.2f}'
+        })
 
     train_bar.close()
-    result['loss_G'] /= len(train_parameters['train_dataloader'])
-    result['loss_D'] /= len(train_parameters['train_dataloader'])
-    result['FM_loss'] /= len(train_parameters['train_dataloader'])  
-    result['Mel_loss'] /= len(train_parameters['train_dataloader']) 
+    for key in result.keys():
+        result[key] /= len(train_parameters['train_dataloader'])
 
     return result
 
 def test_step(test_parameters, store_lr_hr=False):
     test_parameters['generator'].eval()
     test_parameters['discriminator'].eval()
-    result = {}
-    result['loss_G'] = 0
-    result['loss_D'] = 0
-    result['FM_loss'] = 0  
-    result['Mel_loss'] = 0  
-    # result['PESQ'] = 0  
-    result['LSD'] = 0
-    result['LSD_H'] = 0
-    # result['STOI'] = 0
+    
+    result = {
+        'loss_G_total': 0, 'loss_D': 0,
+        'FM_loss': 0, 'GAN_loss': 0, 'Mel_loss': 0,
+        'codebook_loss': 0, 'commitment_loss': 0,
+        'LSD': 0, 'LSD_H': 0
+    }
 
     test_bar = tqdm(test_parameters['val_dataloader'], desc='Validation', position=1, leave=False, disable=False)
-    i = 0
-    # total_pesq = 0
-    total_lsd = 0
-    total_lsd_h = 0
-    total_stoi = 0
-    # total_pesq = 0
 
     # Test DataLoader Loop
     with torch.no_grad():
-        for hr, lr, cond, _, _ in test_bar:
-            i += 1
-            lr = lr.to(DEVICE)
-            hr = hr.to(DEVICE)
-            cond = cond.to(DEVICE)
-            bwe = test_parameters['generator'](lr, cond)
+        for i, (hr, lr, cond, _, _) in enumerate(test_bar):
+            lr, hr, cond = lr.to(DEVICE), hr.to(DEVICE), cond.to(DEVICE)
             
-            _, loss_GAN, loss_FM, loss_mel = test_parameters['discriminator'].loss_G(bwe, hr)
-            loss_G = loss_GAN + 100*loss_FM + loss_mel
+            if test_parameters['lambda_codebook_loss'] != 0:
+                bwe, commitment_loss, codebook_loss = test_parameters['generator'](lr, cond)
+            else:
+                bwe = test_parameters['generator'](lr, cond)
+                commitment_loss, codebook_loss = 0, 0
+
+            loss_G, loss_GAN, loss_FM, loss_mel = compute_loss(test_parameters['discriminator'], bwe, hr, test_parameters, commitment_loss, codebook_loss)
             loss_D = test_parameters['discriminator'].loss_D(bwe, hr)
             
-            result['loss_G'] += loss_G.item()
+            # Log
+            result['loss_G_total'] += loss_G.item()
             result['loss_D'] += loss_D.item()
+            result['GAN_loss'] += loss_GAN.item()
             result['FM_loss'] += loss_FM.item()
             result['Mel_loss'] += loss_mel.item()
+            result['commitment_loss'] += commitment_loss.item() if commitment_loss else 0
+            result['codebook_loss'] += codebook_loss.item() if codebook_loss else 0
 
-            # pesq_score =  pesq(fs=16000, ref=hr.squeeze().cpu().numpy(), deg=bwe.squeeze().cpu().numpy(), mode="wb")
-            # total_pesq += pesq_score
-            
+            # Compute metric
             batch_lsd = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, )
-            total_lsd += batch_lsd
-
             batch_lsd_h = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=4500, cutoff_freq=24000)
-            total_lsd_h += batch_lsd_h
-
-            # stoi_score = py_stoi(hr.squeeze().cpu().numpy(), bwe.squeeze().cpu().numpy(), sample_rate=16000)
-            # total_stoi += stoi_score
+            result['LSD'] += batch_lsd
+            result['LSD_H'] += batch_lsd_h
 
             test_bar.set_postfix({
-                'Loss G': f'{loss_G.item():.2f}',
-                'FM loss': f'{loss_FM.item():.2f}',
-                'Mel loss': f'{loss_mel.item():.2f}',
-                'Loss D': f'{loss_D.item():.2f}',
-                # 'PESQ': f'{pesq_score:.2f}',
-                'LSD_H': f'{batch_lsd_h:.2f}',
-                # 'STOI': f'{stoi_score:.2f}'
+                # 'Loss G': f'{loss_G.item():.2f}',
+                # 'Loss D': f'{loss_D.item():.2f}',
+                'FM Loss': f'{loss_FM.item():.2f}',
+                'Mel Loss': f'{loss_mel.item():.2f}',
+                'LSD_H': f'{batch_lsd_h:.2f}'
             })
 
             # Optional: Store spectrograms for specific indices
-            if i in [5, 55, 505] and store_lr_hr:
-                key_suffix = f'_{i}'
-                result[f'audio_hr{key_suffix}'] = hr.squeeze().cpu().numpy()
-                # result[f'audio_input{key_suffix}'] = draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
-                result[f'audio_target{key_suffix}'] = draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
-                
-            if i in [5, 55, 505]:
-                key_suffix = f'_{i}'
-                result[f'audio_bwe{key_suffix}'] = bwe.squeeze().cpu().numpy()
-                result[f'audio_recon{key_suffix}'] = draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
+            if i in [3, 9, 15, 23]: # 15 10 22
+                result[f'audio_bwe_{i}'] = bwe.squeeze().cpu().numpy()
+                result[f'audio_recon_{i}'] = draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
 
-            del lr, hr, bwe, loss_GAN, loss_FM, loss_mel, loss_D
+                if store_lr_hr:
+                    result[f'audio_hr_{i}'] = hr.squeeze().cpu().numpy()
+                    # result[f'audio_input_{i}'] = draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
+                    result[f'audio_target_{i}'] = draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True)
 
-            gc.collect()
-            torch.cuda.empty_cache()
-
-
+            del lr, hr, bwe
+            # gc.collect()
         test_bar.close()
-        result['loss_G'] /= len(test_parameters['val_dataloader'])
-        result['loss_D'] /= len(test_parameters['val_dataloader'])
-        result['FM_loss'] /= len(test_parameters['val_dataloader'])  # FM loss 평균 계산
-        result['Mel_loss'] /= len(test_parameters['val_dataloader'])  # Mel loss 평균 계산
-        # result['PESQ'] = total_pesq / len(test_parameters['val_dataloader'])
-        result['LSD'] = total_lsd / len(test_parameters['val_dataloader'])
-        result['LSD_H'] = total_lsd_h / len(test_parameters['val_dataloader'])
-        # result['STOI'] = total_stoi / len(test_parameters['val_dataloader'])
-    return result
+        
+        for key, value in result.items():
+            if isinstance(value, (int, float)):
+                if key not in ['LSD', 'LSD_H']:
+                    result[key] /= len(test_parameters['val_dataloader'])
+        result['LSD'] /= len(test_parameters['val_dataloader'])
+        result['LSD_H'] /= len(test_parameters['val_dataloader'])
+        
+        return result
 
 def main():
     ################ Read Config Files
@@ -262,37 +210,21 @@ def main():
            notes=config['run_name'])
 
     train_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_train'], 
-                                  path_dir_wb=config['dataset']['wb_train'], seg_len=config['dataset']['seg_len'], mode="train")
-    # test_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], 
-                                #  path_dir_wb=config['dataset']['wb_test'], seg_len=config['dataset']['seg_len'], mode="train")
+                                  path_dir_wb=config['dataset']['wb_train'], seg_len=config['dataset']['seg_len'], mode="train", enhance=config['dataset']['enhance'])
+    test_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], 
+                                 path_dir_wb=config['dataset']['wb_test'], seg_len=config['dataset']['seg_len'], mode="val", high_index=31)
 
-    train_size = int(0.99 * len(train_dataset))
-    test_size = len(train_dataset) - train_size
-    train_dataset, test_dataset = random_split(train_dataset, [train_size,test_size])
-    
+    # Split train into train/test
+    if config['dataset']['ratio'] < 1:
+        train_size = int(config['dataset']['ratio'] * len(train_dataset))
+        test_size = len(train_dataset) - train_size
+        train_dataset, _ = random_split(train_dataset, [train_size,test_size])
+        
     # Small dataset
-    # train_dataset = SmallDataset(train_dataset, 300)
+    # train_dataset = SmallDataset(train_dataset, 100)
     # test_dataset = SmallDataset(test_dataset, 3000) 
-    
 
     print(f'Train Dataset size: {len(train_dataset)} | Validation Dataset size: {len(test_dataset)}\n')
-
-    # ################ Calculate Class Weights for Sampler
-    # # Get the number of samples for each class
-    # class_counts = dataset.get_class_counts()  # Retrieve the number of files per class
-
-    # # Create class weights (inverse proportion to class frequency)
-    # class_weights = 1.0 / torch.tensor(class_counts, dtype=torch.float)
-    # class_weights[0] = class_weights[0] * 2
-
-    # # Set the sample weights for each sample (only used for train_dataset)
-    # train_labels = [dataset.labels[i] for i in train_dataset.indices]  # Get the sample labels for the train dataset
-    # train_sample_weights = [class_weights[label] for label in train_labels]
-
-    # # Create WeightedRandomSampler
-    # train_sampler = WeightedRandomSampler(weights=train_sample_weights, num_samples=len(train_sample_weights)//3, replacement=True)
-    # ################
-
     TPARAMS['train_dataloader'] = DataLoader(train_dataset, batch_size = config['dataset']['batch_size'], 
                                             # sampler = train_sampler,
                                             num_workers=config['dataset']['num_workers'], 
@@ -311,7 +243,8 @@ def main():
     warnings.filterwarnings("ignore", category=FutureWarning, message="`resume_download` is deprecated")
     warnings.filterwarnings("ignore", message=".*cudnnException: CUDNN_BACKEND_EXECUTION_PLAN_DESCRIPTOR.*")
 
-    prepare_generator(config)
+    TPARAMS['generator'] = prepare_generator(config, MODEL_MAP)
+    
     # Prepare discriminator
     disc_type = config['model']['discriminator']
     if disc_type == "MSD":
@@ -325,6 +258,11 @@ def main():
             bands=discriminator_config['band_split_ratio'],
             ms_mel_loss_config=config['model']['ms_mel_loss_config']
         )
+        TPARAMS['lambda_mel_loss'] = config['loss']['lambda_mel_loss']
+        TPARAMS['lambda_fm_loss'] = config['loss']['lambda_fm_loss']
+        TPARAMS['lambda_adv_loss'] = config['loss']['lambda_adv_loss']
+        TPARAMS['lambda_commitment_loss'] = config['loss']['lambda_commitment_loss']
+        TPARAMS['lambda_codebook_loss'] = config['loss']['lambda_codebook_loss']
     else:
         raise ValueError(f"Unsupported discriminator type: {disc_type}")
     print("########################################")
@@ -334,16 +272,18 @@ def main():
                                           betas=(config['optim']['B1'],config['optim']['B2']))
     TPARAMS['optim_D'] = torch.optim.Adam(TPARAMS['discriminator'].parameters(), config['optim']['learning_rate'], 
                                           betas=(config['optim']['B1'],config['optim']['B2']))
-    
+    TPARAMS['scheduler_G'] = optim.lr_scheduler.ExponentialLR(
+                            TPARAMS['optim_G'], gamma=config['optim']['scheduler_gamma'])
+    TPARAMS['scheduler_D'] = optim.lr_scheduler.ExponentialLR(
+                            TPARAMS['optim_D'], gamma=config['optim']['scheduler_gamma'])
     ################ Load Checkpoint if available
     start_epoch = 0
-    best_lsdh = 1e10
 
     if config['train']['ckpt']:
         checkpoint_path = config['train']['ckpt_path']
         if os.path.isfile(checkpoint_path):
             start_epoch, best_lsdh = load_checkpoint(TPARAMS['generator'], TPARAMS['discriminator'],
-                                                     TPARAMS['optim_G'], TPARAMS['optim_D'], checkpoint_path)
+                                                     TPARAMS['optim_G'], TPARAMS['optim_D'], DEVICE, checkpoint_path)
         else:
             print(f"Checkpoint file not found at {checkpoint_path}. Starting training from scratch.")
 
@@ -353,8 +293,8 @@ def main():
     BAR = tqdm(range(start_epoch+1, config['train']['max_epochs'] + 1), position=0, leave=True)
     TPARAMS['generator'].to(DEVICE)
     TPARAMS['discriminator'].to(DEVICE)
-    best_LSD = 1e10
-
+    
+    best_lsdh = 1e10
     store_lr_hr = True # flag
     for epoch in BAR:
         # set_seed(epoch+42)
@@ -370,16 +310,20 @@ def main():
             if store_lr_hr:
                 store_lr_hr = False
             # Best LSD Model
-            if val_result['LSD_H'] < best_LSD:
-                best_lsd = val_result['LSD_H']
-                save_checkpoint(TPARAMS['generator'], TPARAMS['discriminator'], epoch, best_lsd, config)
+            if val_result['LSD_H'] < best_lsdh:
+                # best_lsdh = val_result['LSD_H'] # save all time
+                save_checkpoint(TPARAMS['generator'], TPARAMS['discriminator'], TPARAMS['optim_G'], 
+                                TPARAMS['optim_D'], epoch, val_result['LSD_H'], config)
+
+            TPARAMS['scheduler_G'].step()
+            TPARAMS['scheduler_D'].step()
 
             desc = (f"Epoch [{epoch}/{config['train']['max_epochs']}] "
-                    f"Loss G: {train_result['loss_G']:.2f}, "
+                    f"Loss G: {train_result['loss_G_total']:.2f}, "
                     f"FM Loss: {train_result['FM_loss']:.2f}, "
                     f"Mel Loss: {train_result['Mel_loss']:.2f}, "
                     f"Loss D: {train_result['loss_D']:.2f}, "
-                    f"Val Loss G: {val_result['loss_G']:.2f}, "
+                    f"Val Loss G: {val_result['loss_G_total']:.2f}, "
                     f"Val FM Loss: {val_result['FM_loss']:.2f}, "
                     f"Val Mel Loss: {val_result['Mel_loss']:.2f}, "
                     f"Val Loss D: {val_result['loss_D']:.2f}, "
@@ -388,7 +332,7 @@ def main():
             
         else:
             desc = (f"Epoch [{epoch}/{config['train']['max_epochs']}] "
-                    f"Loss G: {train_result['loss_G']:.2f}, "
+                    f"Loss G: {train_result['loss_G_total']:.2f}, "
                     f"FM Loss: {train_result['FM_loss']:.2f}, "
                     f"Mel Loss: {train_result['Mel_loss']:.2f}, "
                     f"Loss D: {train_result['loss_D']:.2f}"
@@ -396,98 +340,7 @@ def main():
         BAR.set_description(desc)
 
     gc.collect()
-    final_epoch = config['train']['max_epochs']
-    save_checkpoint(TPARAMS['generator'], TPARAMS['discriminator'], final_epoch, val_result['LSD_H'], config)
 
-def prepare_generator(config):
-    gen_type = config['model']['generator']
-    # Get the model class from the map
-    if gen_type not in MODEL_MAP:
-        raise ValueError(f"Unsupported generator type: {gen_type}")
-    ModelClass = MODEL_MAP[gen_type]
-
-    # Base parameters
-    model_params = {
-        "min_dim": config['model']['min_dim'],
-        "causality": True
-    }
-    # Add additional parameters based on generator type
-    if gen_type in {"SEANet_v8", "SEANet_v6", "SEANet_v5"}:
-        model_params['feat_dim'] = 32
-    if gen_type in {"SEANet_v8", "SEANet_v6", "SEANet_v5", "SEANet_dec_cond", "NewSEANet"}:
-        model_params['kmeans_model_path'] = config['model']['kmeans_path']
-        model_params['modelname'] = config['model']['sslname']
-    if gen_type == "SEANet_v8":
-        model_params['decoder_depth'] = 16
-    if gen_type == "SEANet_TFiLM":
-        model_params['kmeans_model_path'] = config['model']['kmeans_path']
-    if gen_type == "SEANet_TFiLM_nokmod":
-        model_params['in_channels'] = config['model']['in_channels']
-        model_params['fe_weight_path'] = config['model']['fe_weight_path']
-        model_params['min_dim'] = config['model']['min_dim']
-        # fe weight path
-
-    # Instantiate the model
-    print(ModelClass)
-    TPARAMS['generator'] = ModelClass(**model_params)
-    trainable_params = sum(p.numel() for p in TPARAMS['generator'].parameters() if p.requires_grad) / 1_000_000
-
-    # Print information about the loaded model
-    kmeans_info = os.path.splitext(os.path.basename(config['model']['kmeans_path']))[0] if 'kmeans_path' in config['model'] else 'None'
-    print("########################################")
-    print(f"{gen_type} Generator: \n"
-          f"                  kmeans: {kmeans_info} \n"
-          f"                  trainable params: {trainable_params:.2f}M \n"
-          f"                  Disc: {config['model']['discriminator']},\n" )
-
-def save_checkpoint(generator, discriminator, epoch, lsd_h, config):
-    checkpoint_dir = config['train']['ckpt_save_dir']
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch}_lsdH_{lsd_h:.3f}.pth")
-    torch.save({
-        'epoch': epoch,
-        'generator_state_dict': generator.state_dict(),
-        'discriminator_state_dict': discriminator.state_dict(),
-        'optimizer_G_state_dict': TPARAMS['optim_G'].state_dict(),  # Save optimizer state
-        'optimizer_D_state_dict': TPARAMS['optim_D'].state_dict(),  # Save optimizer state
-        'lsd_h': lsd_h,
-    }, checkpoint_path)
-    print(f"Checkpoint saved at: {checkpoint_path}")
-
-def load_checkpoint(generator, discriminator, optimizer_G, optimizer_D, checkpoint_path):
-    checkpoint = torch.load(checkpoint_path)
-    generator.load_state_dict(checkpoint['generator_state_dict'])
-    discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
-    
-    start_epoch = checkpoint['epoch'] 
-    # best_pesq = checkpoint['pesq_score']
-    best_lsdh = checkpoint['lsd_h']
-    
-    if 'optimizer_G_state_dict' in checkpoint and 'optimizer_D_state_dict' in checkpoint:
-        optimizer_G.load_state_dict(checkpoint['optimizer_G_state_dict'])
-        optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])
-
-    # Optimizer states are loaded but still on CPU, need to move to GPU
-    for state in optimizer_G.state.values():
-        for k, v in state.items():
-            if isinstance(v, torch.Tensor):
-                state[k] = v.to(DEVICE)
-    
-    for state in optimizer_D.state.values():
-        for k, v in state.items():
-            if isinstance(v, torch.Tensor):
-                state[k] = v.to(DEVICE)
-
-    return start_epoch, best_lsdh
-
-def SmallDataset(dataset, num_samples):
-    total_samples = len(dataset)
-    indices = list(range(total_samples))
-    random.shuffle(indices)
-    random_indices = indices[:num_samples]
-    
-    subset = Subset(dataset, random_indices)
-    return subset
 
 if __name__ == "__main__":
     main()

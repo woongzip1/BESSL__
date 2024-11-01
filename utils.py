@@ -10,6 +10,127 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 import librosa
 
+import wandb
+
+def prepare_generator(config, MODEL_MAP):
+    gen_type = config['model']['generator']
+    # Get the model class from the map
+    if gen_type not in MODEL_MAP:
+        raise ValueError(f"Unsupported generator type: {gen_type}")
+    ModelClass = MODEL_MAP[gen_type]
+
+    # Base parameters
+    model_params = {
+        "min_dim": config['model']['min_dim'],
+        "causality": True
+    }
+    # Add additional parameters based on generator type
+    if gen_type == "SEANet_TFiLM":
+        model_params['kmeans_model_path'] = config['model']['kmeans_path']
+    if gen_type == "SEANet_TFiLM_nokmod":
+        model_params['in_channels'] = config['model']['in_channels']
+        model_params['fe_weight_path'] = config['model']['fe_weight_path']
+        model_params['min_dim'] = config['model']['min_dim']
+        model_params['train_enc'] = config['model']['train_enc']
+    if gen_type == "SEANet_TFiLM_RVQ":
+        model_params['in_channels'] = config['model']['in_channels']
+        model_params['fe_weight_path'] = config['model']['fe_weight_path']
+        model_params['min_dim'] = config['model']['min_dim']
+        model_params['train_enc'] = config['model']['train_enc']
+
+        # fe weight path
+
+    # Instantiate the model
+    print(ModelClass)
+    generator = ModelClass(**model_params)
+    trainable_params = sum(p.numel() for p in generator.parameters() if p.requires_grad) / 1_000_000
+
+    # Print information about the loaded model
+    kmeans_info = os.path.splitext(os.path.basename(config['model']['kmeans_path']))[0] if 'kmeans_path' in config['model'] else 'None'
+    print("########################################")
+    print(f"{gen_type} Generator: \n"
+          f"                  kmeans: {kmeans_info} \n"
+          f"                  trainable params: {trainable_params:.2f}M \n"
+          f"                  Disc: {config['model']['discriminator']},\n" )
+    
+    return generator
+
+
+def wandb_log(loglist, epoch, note):
+    for key, val in loglist.items():
+        if isinstance(val, torch.Tensor):
+            item = val.cpu().detach().numpy()
+        else:
+            item = val
+        try:
+            if isinstance(item, float):
+                log = item
+            elif isinstance(item, plt.Figure):
+                log = wandb.Image(item)
+                plt.close(item)
+            elif item.ndim in [2, 3]:  # 이미지 데이터
+                log = wandb.Image(item, caption=f"{note.capitalize()} {key.capitalize()} Epoch {epoch}")
+            elif item.ndim == 1:  # 오디오 데이터
+                log = wandb.Audio(item, sample_rate=48000, caption=f"{note.capitalize()} {key.capitalize()} Epoch {epoch}")
+            else:
+                log = item
+        except Exception as e:
+            print(f"Failed to log {key}: {e}")
+            log = item
+
+        wandb.log({
+            f"{note.capitalize()} {key.capitalize()}": log,
+        }, step=epoch)
+
+def save_checkpoint(generator, discriminator, optim_g, optim_d, epoch, lsd_h, config):
+    checkpoint_dir = config['train']['ckpt_save_dir']
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch}_lsdH_{lsd_h:.3f}.pth")
+    torch.save({
+        'epoch': epoch,
+        'generator_state_dict': generator.state_dict(),
+        'discriminator_state_dict': discriminator.state_dict(),
+        'optimizer_G_state_dict': optim_g.state_dict(),  # Save optimizer state
+        'optimizer_D_state_dict': optim_d.state_dict(),  # Save optimizer state
+        'lsd_h': lsd_h,
+    }, checkpoint_path)
+    print(f"Checkpoint saved at: {checkpoint_path}")
+
+def load_checkpoint(generator, discriminator, optimizer_G, optimizer_D, device, checkpoint_path):
+    checkpoint = torch.load(checkpoint_path)
+    generator.load_state_dict(checkpoint['generator_state_dict'])
+    discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+    
+    start_epoch = checkpoint['epoch'] 
+    # best_pesq = checkpoint['pesq_score']
+    best_lsdh = checkpoint['lsd_h']
+    
+    if 'optimizer_G_state_dict' in checkpoint and 'optimizer_D_state_dict' in checkpoint:
+        optimizer_G.load_state_dict(checkpoint['optimizer_G_state_dict'])
+        optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])
+
+    # Optimizer states are loaded but still on CPU, need to move to GPU
+    for state in optimizer_G.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.to(device)
+    
+    for state in optimizer_D.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.to(device)
+
+    return start_epoch, best_lsdh
+
+
+def count_params(model, milion=True):
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if milion:
+        print(f"Trainable parameters: {trainable_params/1000_000:.2f}M")
+    else:
+        print(f"Trainable parameters: {trainable_params:.2f}")
+
+
 """ 주어진 디렉토리에서 지정된 확장자를 가진 모든 오디오 파일의 절대 경로를 반환합니다. """
 def get_audio_paths(paths: list, file_extensions=['.wav', '.flac']):
     audio_paths = []
@@ -24,82 +145,8 @@ def get_audio_paths(paths: list, file_extensions=['.wav', '.flac']):
     
     return audio_paths
 
-def count_audio_files(paths: list, file_extensions=['.wav', '.mp3', '.flac']):
-    """ 주어진 디렉토리에서 지정된 확장자를 가진 모든 오디오 파일의 개수를 반환합니다. """
-    audio_files = get_audio_paths(paths, file_extensions)
-    return len(audio_files)
-
-def check_dir_exist(path_list):
-    if type(path_list) == str:
-        path_list = [path_list]
-        
-    for path in path_list:
-        if type(path) == str and os.path.splitext(path)[-1] == '' and not os.path.exists(path):
-            os.makedirs(path)       
-
 def get_filename(path):
     return os.path.splitext(os.path.basename(path))  
-
-"""input LR path -> LR/train & LR/test""" 
-def path_into_traintest(lr_folder_path):
-    # LR 폴더 내의 모든 하위 폴더(화자 폴더)를 리스트로 가져옵니다.
-    speaker_folders = sorted([f for f in os.listdir(lr_folder_path) if os.path.isdir(os.path.join(lr_folder_path, f))])
-    
-    # 마지막 9명의 화자를 테스트 세트로 설정합니다.
-    test_speakers = speaker_folders[-9:]
-    train_speakers = speaker_folders[:-9]
-
-    # Train과 Test 폴더를 생성합니다.
-    train_path = os.path.join(lr_folder_path, 'train')
-    test_path = os.path.join(lr_folder_path, 'test')
-    os.makedirs(train_path, exist_ok=True)
-    os.makedirs(test_path, exist_ok=True)
-
-    # 트레이닝 폴더에 화자 폴더를 이동합니다.
-    for speaker in train_speakers:
-        original_path = os.path.join(lr_folder_path, speaker)
-        destination_path = os.path.join(train_path, speaker)
-        shutil.move(original_path, destination_path)
-
-    # 테스트 폴더에 화자 폴더를 이동합니다.
-    for speaker in test_speakers:
-        original_path = os.path.join(lr_folder_path, speaker)
-        destination_path = os.path.join(test_path, speaker)
-        shutil.move(original_path, destination_path)
-
-    print(f"Train set and test set have been created at {train_path} and {test_path}.")
-
-def si_sdr(reference_signal, estimated_signal):
-    """
-    Compute Scale-Invariant Signal-to-Distortion Ratio (SI-SDR).
-    
-    Parameters:
-    - reference_signal (torch.Tensor): The reference signal (N, L)
-    - estimated_signal (torch.Tensor): The estimated signal (N, L)
-    
-    Returns:
-    - si_sdr (torch.Tensor): The SI-SDR value for each signal in the batch (N,)
-    """
-    # Ensure the inputs are of the same shape
-    assert reference_signal.shape == estimated_signal.shape, "Input and reference signals must have the same shape"
-    
-    # Check if Shape is -> N x L
-    if reference_signal.dim() == 3:
-        reference_signal = reference_signal.squeeze(1)
-        estimated_signal = estimated_signal.squeeze(1)
-    
-    # Compute the scaling factor
-    reference_signal = reference_signal - reference_signal.mean(dim=1, keepdim=True)
-    estimated_signal = estimated_signal - estimated_signal.mean(dim=1, keepdim=True)
-    
-    s_target = (torch.sum(reference_signal * estimated_signal, dim=1, keepdim=True) / torch.sum(reference_signal ** 2, dim=1, keepdim=True)) * reference_signal
-    
-    e_noise = estimated_signal - s_target
-    
-    si_sdr_value = 10 * torch.log10(torch.sum(s_target ** 2, dim=1) / torch.sum(e_noise ** 2, dim=1))
-    
-    return si_sdr_value
-
 
 def lsd_batch(x_batch, y_batch, fs=16000, frame_size=0.02, frame_shift=0.02, start=0, cutoff_freq=0, nfft=512):
     frame_length = int(frame_size * fs)
@@ -216,15 +263,9 @@ def draw_spec(x,
         # plt.close()
         plt.show()
         return stft
-        
-# import random
-# from train import RTBWETrain
-from torch.utils.data import Subset
-# from NewSEANet import NewSEANet
-# from SEANet import SEANet
 
+from torch.utils.data import Subset
 def SmallDataset(dataset, num_samples):
-    # dataset = dataloader.dataset
     total_samples = len(dataset)
     indices = list(range(total_samples))
     random.shuffle(indices)
@@ -262,7 +303,6 @@ def lpf(y, sr=16000, cutoff=500, plot_resp=False, window='hamming', figsize=(10,
 
 from pystoi import stoi
 def py_stoi(clean_audio, processed_audio, sample_rate=16000):
-
     # Calculate STOI
     stoi_score = stoi(clean_audio, processed_audio, sample_rate, extended=False)
     return stoi_score
@@ -384,9 +424,6 @@ class ViSQOL:
 
 def main():
     parser = argparse.ArgumentParser(description="Path for train test split")
-    parser.add_argument("--path", type=str, help="Path for dataset")
-    args = parser.parse_args()
-    path_into_traintest(args.path)
 
 if __name__ == "__main__":
     main()

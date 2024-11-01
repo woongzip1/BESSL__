@@ -16,7 +16,7 @@ class CustomDataset(Dataset):
     path_dir_nb=["/mnt/hdd/Dataset/FSD50K_16kHz_codec",
                  "/mnt/hdd/Dataset/MUSDB18_MP3_8k"],
                  """
-    def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train", high_index=31):
+    def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train", high_index=31, enhance=True):
         assert isinstance(path_dir_nb, list), "PATH must be a list"
 
         self.seg_len = seg_len
@@ -28,30 +28,65 @@ class CustomDataset(Dataset):
         paths_wav_nb = []
         self.labels = []
         self.path_lengths = {}
+        self.enhance = enhance
+        
+        if self.enhance: # Enhance & Extend
+            # number of dataset -> ['path1','path2']
+            for i in range(len(path_dir_nb)):
+                self.path_dir_nb = path_dir_nb[i]
+                self.path_dir_wb = path_dir_wb[i]
 
-        # number of dataset -> ['path1','path2']
-        for i in range(len(path_dir_nb)):
-            self.path_dir_nb = path_dir_nb[i]
-            self.path_dir_wb = path_dir_wb[i]
+                wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
+                nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
+                paths_wav_wb.extend(wb_files)
+                paths_wav_nb.extend(nb_files)
 
-            wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
-            nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
-            paths_wav_wb.extend(wb_files)
-            paths_wav_nb.extend(nb_files)
+                # Assign labels based on path1, path2
+                self.labels.extend([i] * len(wb_files)) 
+                self.path_lengths[f'idx{i}len'] = len(wb_files)
+                print(f"Index:{i} with {len(wb_files)} samples")
 
-            # Assign labels based on path1, path2
-            self.labels.extend([i] * len(wb_files)) 
-            self.path_lengths[f'idx{i}len'] = len(wb_files)
-            print(f"Index:{i} with {len(wb_files)} samples")
+            print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
 
-        print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
+            if len(paths_wav_wb) != len(paths_wav_nb):
+                sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
 
-        if len(paths_wav_wb) != len(paths_wav_nb):
-            sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
+            # make filename wb-nb        
+            self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
+            print(f"{mode}: {len(self.filenames)} files loaded")
+        
+        else: # Extend only dataset
+                # """
+                # dataset = CustomDataset(["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 
+                #         ["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 0.9, enhance=False)
+                # """
+                # number of dataset -> ['path1','path2']
+            for i in range(len(path_dir_nb)):
+                self.path_dir_nb = path_dir_nb[i]
+                self.path_dir_wb = path_dir_wb[i]
 
-        # make filename wb-nb        
-        self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
-        print(f"{mode}: {len(self.filenames)} files loaded")
+                wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
+                # nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
+                nb_files = [path.replace('/home/woongjib/Projects/Dataset/', '/mnt/hdd/Dataset_BESSL/') for path in wb_files]
+                nb_files = [path.replace('WB_SEGMENT', 'LPF') for path in nb_files]
+                
+                paths_wav_wb.extend(wb_files)
+                paths_wav_nb.extend(nb_files)
+
+                # Assign labels based on path1, path2
+                self.labels.extend([i] * len(wb_files)) 
+                self.path_lengths[f'idx{i}len'] = len(wb_files)
+                print(f"Index:{i} with {len(wb_files)} samples")
+
+            print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
+
+            if len(paths_wav_wb) != len(paths_wav_nb):
+                sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
+
+            # make filename wb-nb        
+            self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
+            print(f"{mode}: {len(self.filenames)} files loaded")
+
 
     def get_class_counts(self):
         return [self.path_lengths[f'idx{i}len'] for i in range(len(self.path_lengths))]
@@ -70,61 +105,39 @@ class CustomDataset(Dataset):
         wav_wb = wav_wb.view(1, -1)
         wav_nb = wav_nb.view(1, -1)
 
-        
-        # if path_wav_wb == "/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT/FSD50K.dev_audio/103434_mono_segment_8.wav":
-        #     print(wav_nb.shape[-1], self.seg_len)
-               
-
-        if self.seg_len > 0 and self.mode == "train":
+        if self.seg_len > 0 and self.mode == "train": # train mode
             duration = int(self.seg_len * self.sr) #43200
-            sig_len = wav_nb.shape[-1] # 43200 or 48000
+            sig_len = wav_nb.shape[-1] # 43200 
 
             if sig_len < duration:
                 "crop out 100 nb and repeat"
                 # print('short')
                 t_start = 0
                 t_end = t_start + duration # 43200
-                wav_nb = wav_nb[...,100:sig_len]
-                wav_wb = wav_wb[...,:sig_len-100]
                 wav_nb = wav_nb.repeat(1, t_end // sig_len + 1)[..., :duration]
                 wav_wb = wav_wb.repeat(1, t_end // sig_len + 1)[..., :duration]
                 wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
                 wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)                
                 
-            elif sig_len > 43200:
-                "crop out 100"
-                # print('long')
-                # t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 300]), size=1)[0]
+            elif sig_len > duration:
+                "crop out from long data"
+                if self.enhance:
+                    t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 2]), size=1)[0]
+                    t_end = t_start + duration
+                    wav_nb = wav_nb[...,:duration]
+                    wav_wb = wav_wb[...,:duration]
+                else: # extend only, nb:48000
+                    wav_nb = wav_nb[...,100:100+duration]
                 
-                # t_end = t_start + duration
-                wav_nb = wav_nb[...,100:100+duration]
-                wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
-                ## siglen이 43296, 43300보다는 작을 때는 어떻게 할래?
-                wav_wb = wav_wb[...,:duration]
-                
-            elif sig_len == 43200:
-                wav_nb = wav_nb[...,:duration]
-                wav_wb = wav_wb[...,:duration]
-            else:
-                ValueError(f"wrong nb length for {path_wav_nb}")
+            elif sig_len == duration:
+                pass
 
-            # wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
-            # wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)
-            
-            # # t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 2]), size=1)[0] # random start
-            # # if t_start % 2 == 1:
-            #     # t_start -= 1
-            # t_end = t_start + duration
-
-            # #### repeat for short signals
-            # wav_nb = wav_nb.repeat(1, t_end // sig_len + 1)[..., t_start:t_end]
-            # wav_wb = wav_wb.repeat(1, t_end // sig_len + 1)[..., t_start:t_end]
-            
             # #### Length ensure
             # wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
             # wav_wb = self.ensure_length(wav_wb, sr_wb * self.seg_len)
 
-        elif self.mode == "val":
+        elif self.mode == "val": 
+            # need some modifications...
             sig_len = wav_nb.shape[-1] # 0 - 10100 <> 0 - 10100 >> 100 - 10100
             
             if sig_len > 43200:
@@ -206,4 +219,3 @@ class CustomDataset(Dataset):
 
         # print(f_start/1024 * 24000, f_end/1024 * 24000)
         return extracted_spec
-

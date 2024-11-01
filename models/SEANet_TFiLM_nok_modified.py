@@ -198,43 +198,7 @@ class SEANet_TFiLM(nn.Module):
             kernel_size = 7,
             stride = 1,
         )
-        
-    # def quantize_input(self, input_tensor, visualize=False):
-    #     # input tensor: B x 512 x 10 x T
-    #     # print(input_tensor.shape)
-    #     input_tensor = rearrange(input_tensor, 'b d f t -> b t (d f)')
-    #     # print(input_tensor.shape)
 
-
-    #     B, T, _ = input_tensor.shape
-    #     kmeans_models = self.kmeans
-    #     num_patches = len(kmeans_models)
-    #     patch_size = 512  # Each patch has 768 dimensions
-
-    #     quantized_output = []
-
-    #     for idx in range(num_patches):
-    #         patch_start = patch_size * idx
-    #         patch_end = patch_start + patch_size
-
-    #         # Extract the patch-specific embeddings
-    #         patch_embeddings = input_tensor[:, :, patch_start:patch_end]  # B x T x 768
-    #         patch_embeddings = patch_embeddings.reshape(-1, patch_size)  # (B*T) x 768
-            
-    #         # Use k-means model to quantize the patch embeddings
-    #         kmeans_model = kmeans_models[idx]
-    #         cluster_labels = kmeans_model.predict(patch_embeddings.cpu().numpy())  # (B*T)
-    #         quantized_patch = kmeans_model.cluster_centers_[cluster_labels]  # (B*T) x 768
-
-    #         # Reshape to original form and append to output
-    #         quantized_patch = torch.tensor(quantized_patch).reshape(B, T, -1)  # B x T x 768
-    #         if visualize: print(f"Patch {idx} quantized shape:", quantized_patch.shape)
-    #         quantized_output.append(quantized_patch)
-
-    #     # Concatenate all quantized patches along the last dimension
-    #     quantized_output = torch.cat(quantized_output, dim=-1)  # B x T x (8*768)
-    #     if visualize: print(f"Final quantized output shape: {quantized_output.size()}")
-    #     return quantized_output
 
     def length_adjustment(self, x, cond):
         """
@@ -277,9 +241,8 @@ class SEANet_TFiLM(nn.Module):
 
         # input condition must be [B x 1 x 1024 x 128]
         # print(cond.shape)
-        with torch.no_grad():
-            embedding = self.ssl_model(cond)
-            # embedding shape: b x 512 x 10 x T
+        embedding = self.ssl_model(cond)
+        # embedding shape: b x 512 x 10 x T
         # print(embedding.shape)
 
         ################## Kmeans
@@ -359,7 +322,6 @@ class EncBlock(nn.Module):
                                        kernel_size = 2 * stride,
                                        stride = stride, padding = 0),
                     )  
-        
         
     def forward(self, x):
         
