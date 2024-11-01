@@ -11,6 +11,7 @@ kmeans/
 weights/*
 kmeans/*
 configs/*
+temp/*
 
 !configs/exp3_rvq.yaml
 
