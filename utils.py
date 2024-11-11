@@ -52,9 +52,9 @@ def prepare_generator(config, MODEL_MAP):
     print(f"Instantiating {gen_type} Generator with parameters:")
     for key, value in model_params.items():
         print(f"  {key}: {value}")
-    
+    print(f"  type: {gen_type}")
     generator = ModelClass(**model_params)
-    print(f"{gen_type} Generator Parameters: {sum(p.numel() for p in generator.parameters() if p.requires_grad) / 1_000_000:.2f}M trainable parameters.\n")
+    print(f"Generator Parameters: {sum(p.numel() for p in generator.parameters() if p.requires_grad) / 1_000_000:.2f}M")
     print("########################################")
     
     return generator

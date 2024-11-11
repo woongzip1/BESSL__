@@ -112,7 +112,8 @@ class FeatureReduction(nn.Module):
 """ Total 1.27 M Parameters """
 class SEANet_TFiLM(nn.Module):
     
-    def __init__(self, min_dim=8, kmeans_model_path=None, visualize=False, fe_weight_path=None, train_enc=True, in_channels=16, **kwargs):
+    def __init__(self, min_dim=8, kmeans_model_path=None, visualize=False, 
+                 subband_num=27, fe_weight_path=None, train_enc=True, in_channels=16, **kwargs):
         # from AudioMAE.models_mae import AudioMAEEncoder
 
         super().__init__()
@@ -138,7 +139,7 @@ class SEANet_TFiLM(nn.Module):
             param.requires_grad = train_enc
 
         # Feature Extracted SSL Layers
-        self.subband_num = 26
+        self.subband_num = subband_num
         self.EmbeddingReduction = FeatureReduction(self.subband_num, D=in_channels*8)
         
         self.FiLM_e1 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*2, visualize=self.visualize)
@@ -243,7 +244,7 @@ class SEANet_TFiLM(nn.Module):
         # print(cond.shape)
         embedding = self.ssl_model(cond)
         # embedding shape: b x 512 x 10 x T
-        # print(embedding.shape)
+        if self.visualize: print(embedding.shape) # [B D F T]
 
         ################## Kmeans
         # embedding = self.quantize_input(embedding).to(x.device)

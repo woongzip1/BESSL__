@@ -15,6 +15,7 @@ temp/*
 
 # !configs/exp3_rvq.yaml
 !configs/exp4_blind.yaml
+!configs/P4_EXP0.yaml
 
 draw_losscurve.ipynb
 demo_eval___*.ipynb

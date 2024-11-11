@@ -9,8 +9,10 @@ import wandb
 from datetime import datetime
 import argparse
 from torch.utils.data import DataLoader, random_split
-from trainer import Trainer 
+import torch.optim.lr_scheduler as lr_scheduler
 
+
+from trainer import Trainer 
 # from MelGAN import Discriminator_MelGAN
 # from MBSTFTD import MultiBandSTFTDiscriminator
 from models.SEANet_TFiLM import SEANet_TFiLM
@@ -39,7 +41,7 @@ def load_config(config_path):
     with open(config_path, "r") as file:
         return yaml.safe_load(file)
 
-def main(if_log_to_wandb):
+def main(if_log_to_wandb, if_log_step):
     args = parse_args()
     config = load_config(args.config)
     torch.manual_seed(42)
@@ -50,9 +52,14 @@ def main(if_log_to_wandb):
     
     # Load datasets
     train_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_train'], path_dir_wb=config['dataset']['wb_train'], 
-                                  seg_len=config['dataset']['seg_len'], mode="train", enhance=config['dataset']['enhance'])
+                                  seg_len=config['dataset']['seg_len'], mode="train", enhance=config['dataset']['enhance'],
+                                  start_index=config['dataset']['start_index'],high_index=31)
     val_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], path_dir_wb=config['dataset']['wb_test'], 
-                                seg_len=config['dataset']['seg_len'], mode="val", high_index=31)
+                                seg_len=config['dataset']['seg_len'], mode="val",
+                                start_index=config['dataset']['start_index'],high_index=31)
+    
+    _,_,cond,_,_ = train_dataset[0]
+    print(f"condition shape: {cond.shape}")
     
     # Optionally split train data
     if config['dataset']['ratio'] < 1:
@@ -64,7 +71,7 @@ def main(if_log_to_wandb):
                               batch_size=config['dataset']['batch_size'],
                             #   batch_size=1,
                               num_workers=config['dataset']['num_workers'],
-                              prefetch_factor=2, persistent_workers=True, pin_memory=True)
+                              prefetch_factor=2, persistent_workers=True, pin_memory=True,)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=config['dataset']['num_workers'], 
                             prefetch_factor=2, persistent_workers=True, pin_memory=True)
     
@@ -76,11 +83,19 @@ def main(if_log_to_wandb):
     optim_G = torch.optim.Adam(generator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
     optim_D = torch.optim.Adam(discriminator.parameters(), lr=config['optim']['learning_rate'], betas=(config['optim']['B1'], config['optim']['B2']))
 
+    # Schedulers
+    scheduler_G = lr_scheduler.ExponentialLR(optim_G, gamma=config['optim']['scheduler_gamma'])
+    scheduler_D = lr_scheduler.ExponentialLR(optim_D, gamma=config['optim']['scheduler_gamma'])
+
     # Trainer initialization
-    trainer = Trainer(generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, DEVICE, if_log_step=False, if_log_to_wandb=if_log_to_wandb)
+    trainer = Trainer(generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, DEVICE, 
+                      scheduler_G=scheduler_G, scheduler_D=scheduler_D, if_log_step=if_log_step, if_log_to_wandb=if_log_to_wandb)
     
+    torch.manual_seed(42)
+    random.seed(42)
     # Train
+    warnings.filterwarnings("ignore", category=UserWarning, message="At least one mel filterbank has")
     trainer.train(num_epochs=config['train']['max_epochs'])
 
 if __name__ == "__main__":
-    main(if_log_to_wandb=False)
+    main(if_log_to_wandb=False, if_log_step=True)

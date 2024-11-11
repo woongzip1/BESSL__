@@ -16,13 +16,15 @@ class CustomDataset(Dataset):
     path_dir_nb=["/mnt/hdd/Dataset/FSD50K_16kHz_codec",
                  "/mnt/hdd/Dataset/MUSDB18_MP3_8k"],
                  """
-    def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train", high_index=31, enhance=True):
+    def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train", 
+                 start_index=5, high_index=31, enhance=True):
         assert isinstance(path_dir_nb, list), "PATH must be a list"
 
         self.seg_len = seg_len
         self.mode = mode
         self.sr = sr
         self.high_index = high_index
+        self.start_index = start_index
         self.enhance = enhance
 
         paths_wav_wb = []
@@ -55,36 +57,37 @@ class CustomDataset(Dataset):
             print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
         
         else: # Extend only dataset ---> need to be modified
-                # """
-                # dataset = CustomDataset(["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 
-                #         ["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 0.9, enhance=False)
-                # """
-                # number of dataset -> ['path1','path2']
-            for i in range(len(path_dir_nb)):
-                self.path_dir_nb = path_dir_nb[i]
-                self.path_dir_wb = path_dir_wb[i]
+            pass
+            #     # """
+            #     # dataset = CustomDataset(["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 
+            #     #         ["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 0.9, enhance=False)
+            #     # """
+            #     # number of dataset -> ['path1','path2']
+            # for i in range(len(path_dir_nb)):
+            #     self.path_dir_nb = path_dir_nb[i]
+            #     self.path_dir_wb = path_dir_wb[i]
 
-                wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
-                # nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
-                nb_files = [path.replace('/home/woongjib/Projects/Dataset/', '/mnt/hdd/Dataset_BESSL/') for path in wb_files]
-                nb_files = [path.replace('WB_SEGMENT', 'LPF') for path in nb_files]
+            #     wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
+            #     # nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
+            #     nb_files = [path.replace('/home/woongjib/Projects/Dataset/', '/mnt/hdd/Dataset_BESSL/') for path in wb_files]
+            #     nb_files = [path.replace('WB_SEGMENT', 'LPF') for path in nb_files]
                 
-                paths_wav_wb.extend(wb_files)
-                paths_wav_nb.extend(nb_files)
+            #     paths_wav_wb.extend(wb_files)
+            #     paths_wav_nb.extend(nb_files)
 
-                # Assign labels based on path1, path2
-                self.labels.extend([i] * len(wb_files)) 
-                self.path_lengths[f'idx{i}len'] = len(wb_files)
-                print(f"Index:{i} with {len(wb_files)} samples")
+            #     # Assign labels based on path1, path2
+            #     self.labels.extend([i] * len(wb_files)) 
+            #     self.path_lengths[f'idx{i}len'] = len(wb_files)
+            #     print(f"Index:{i} with {len(wb_files)} samples")
 
-            print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
+            # print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
 
-            if len(paths_wav_wb) != len(paths_wav_nb):
-                sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
+            # if len(paths_wav_wb) != len(paths_wav_nb):
+            #     sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
 
-            # make filename wb-nb        
-            self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
-            print(f"{mode}: {len(self.filenames)} files loaded")
+            # # make filename wb-nb        
+            # self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
+            # print(f"{mode}: {len(self.filenames)} files loaded")
 
 
     def get_class_counts(self):
@@ -128,7 +131,7 @@ class CustomDataset(Dataset):
         spec = self.normalize_spec(spec)
 
         # Extract Subbands from WB spectrogram
-        spec = self.extract_subband(spec, start=6, end=self.high_index)
+        spec = self.extract_subband(spec, start=self.start_index, end=self.high_index) # start:5 : 3750Hz
 
         return wav_wb, wav_nb, spec, get_filename(path_wav_wb)[0], label
         # return wav_wb, wav_nb, spec, path_wav_wb, label
@@ -175,12 +178,12 @@ class CustomDataset(Dataset):
         spec = (spec - norm_mean) / (norm_std * 2)
         return spec
     
-    def extract_subband(self, spec, start=6, end=31):
+    def extract_subband(self, spec, start=5, end=31):
         """ Get spectrogram Inputs and extract range of subbands : [start:end] """
         
-        C,F,T = spec.shape
+        C,F,T = spec.shape # C F T
         num_subband = 32
-        freqbin_size = F // num_subband
+        freqbin_size = F // num_subband # 1024//32
         dc_line = spec[:,0,:].unsqueeze(1)
 
         f_start = 1 + freqbin_size * start

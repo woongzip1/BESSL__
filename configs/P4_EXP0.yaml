@@ -1,5 +1,5 @@
 random_seed: 0b011011
-run_name: "temp"
+run_name: "EXP0_Temp"
 # blind
 
 #-----------------------------------------------
@@ -7,7 +7,7 @@ run_name: "temp"
 #-----------------------------------------------
 
 dataset:
-  ratio: 1
+  ratio: 0.001
   # ratio: 1
   enhance: True
 
@@ -31,18 +31,21 @@ dataset:
   batch_size: 8
   seg_len: 0.9
   num_workers: 8
+  start_index: 5
  
 #-----------------------------------------------
 #2. Model
 #-----------------------------------------------
 
 generator:
-  type: SEANet
+  type: SEANet_TFiLM_nokmod
   kmeans_path: None
-  in_channels: None
+  in_channels: 48 #FE
   fe_weight_path: None
-  min_dim: 32
+  min_dim: 32     #SEANet
   train_enc: True
+  visualize: False
+  subband_num: 27
 
 discriminator: 
   type: MultiBandSTFTDiscriminator
@@ -70,7 +73,6 @@ loss:
             sr: 48000
             fmin: 0
 
-  # 15-2-1 / 1-100-1
   lambda_mel_loss: 15
   lambda_fm_loss: 2
   lambda_adv_loss: 1
@@ -94,7 +96,7 @@ optim:
 #-----------------------------------------------
 train:
   val_epoch: 1
-  ckpt_save_dir: "./ckpts/temp"
+  ckpt_save_dir: "./ckpts/temp2"
   max_epochs: 20
 
   # True if load from previous

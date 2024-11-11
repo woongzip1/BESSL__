@@ -14,7 +14,8 @@ from loss import loss_backward
 
 
 class Trainer:
-    def __init__(self, generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, device, if_log_step=False, if_log_to_wandb=True):
+    def __init__(self, generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, device, 
+                 scheduler_G=None, scheduler_D=None, if_log_step=False, if_log_to_wandb=True):
         self.generator = generator.to(device)
         self.discriminator = discriminator.to(device)
         self.train_loader = train_loader
@@ -33,7 +34,12 @@ class Trainer:
         self.lambda_fm_loss = config['loss']['lambda_fm_loss']
         self.lambda_adv_loss = config['loss']['lambda_adv_loss']
 
-    def unified_log(self, log_dict, stage, epoch=None):
+        self.scheduler_G = scheduler_G
+        self.scheduler_D = scheduler_D
+
+        self.hr_logged = False
+        
+    def unified_log(self, log_dict, stage, epoch=None, step=None):
         """
         Unified logging function for wandb that handles different data types.
 
@@ -41,6 +47,7 @@ class Trainer:
             log_dict (dict): Dictionary containing log keys and values.
             stage (str): Training/validation stage ('train'/'val').
             epoch (int, optional): Epoch number for logging. Defaults to None.
+            step: Step number for iterations. Used for logging in training
         """
         if self.if_log_to_wandb:
             for key, value in log_dict.items():
@@ -67,7 +74,7 @@ class Trainer:
 
                 wandb.log({
                     f"{stage}/{key}": log,
-                }, step=epoch if epoch is not None else None)
+                }, step=epoch if epoch is not None else step)
 
     # Temporarily unavailable
     # def log_results(self, result, stage, epoch=None):
@@ -82,7 +89,7 @@ class Trainer:
             return self.generator(lr, cond)
         return self.generator(lr, cond), 0, 0
 
-    def train_step(self, hr, lr, cond):
+    def train_step(self, hr, lr, cond, step=None):
         self.generator.train()
         self.discriminator.train()
        
@@ -125,14 +132,14 @@ class Trainer:
         import pdb
         # pdb.set_trace()
         if self.if_log_step:
-            self.unified_log(step_result, 'train')
+            self.unified_log(step_result, 'train', step=step)
         return step_result
 
     def validate(self, epoch):
         self.generator.eval()
         self.discriminator.eval()
-        result = {key: 0 for key in ['loss_G', 'loss_D', 'ms_mel_loss', 'commitment_loss', 'codebook_loss', 'LSD', 'LSD_H']}
-
+        result = {key: 0 for key in ['adv_g', 'fm', 'loss_D', 'ms_mel_loss', 'commitment_loss', 'codebook_loss', 'LSD', 'LSD_H']}
+        
         with torch.no_grad():
             for i, (hr, lr, cond, _, _) in enumerate(tqdm(self.val_loader, desc='Validation')):
                 lr, hr, cond = lr.to(self.device), hr.to(self.device), cond.to(self.device)
@@ -142,13 +149,14 @@ class Trainer:
                 loss_D, d_loss_dict, d_loss_report = self.loss_calculator.compute_discriminator_loss(hr, bwe)
 
                 # Compute LSD and LSD_H metrics
-                batch_lsd = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000)
-                batch_lsd_h = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=4500, cutoff_freq=24000)
-                result['LSD'] += batch_lsd
+                batch_lsd_l = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=0, cutoff_freq=4265)
+                batch_lsd_h = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=4265, cutoff_freq=48000)
+                result['LSD'] += batch_lsd_l
                 result['LSD_H'] += batch_lsd_h
 
                 # Aggregate results
-                result['loss_G'] += loss_G.item()
+                result['adv_g'] += g_loss_dict.get('adv_g', 0).item()
+                result['fm'] += g_loss_dict.get('fm', 0).item()
                 result['ms_mel_loss'] += ms_mel_loss_value.item()
                 result['loss_D'] += loss_D.item()
                 result['commitment_loss'] += commitment_loss.item() if commitment_loss else 0
@@ -161,15 +169,20 @@ class Trainer:
                 #         **{f'D_report_{k}': v for k, v in d_loss_report.items()}
                 #     }, 'val', epoch)
 
-                # Example of logging additional data for validation
-                if i in [0,1,2]:  # Log for the first example as an illustration
-                    self.unified_log({
-                        f'audio_bwe_{i}': bwe.squeeze().cpu().numpy(),
-                        f'audio_hr_{i}': hr.squeeze().cpu().numpy(),
-                        f'spec_bwe_{i}': draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
-                        f'spec_lr_{i}': draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
-                        f'spec_hr_{i}': draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
-                    }, 'val', epoch)
+                # Data logging
+                # if i in [0,5,11]:  
+                #     if not self.hr_logged:
+                #         self.unified_log({
+                #             f'audio_hr_{i}': hr.squeeze().cpu().numpy(),
+                #             f'spec_hr_{i}': draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
+                #             # f'spec_lr_{i}': draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
+                #         }, 'val', epoch)
+
+                #     self.unified_log({
+                #         f'audio_bwe_{i}': bwe.squeeze().cpu().numpy(),
+                #         f'spec_bwe_{i}': draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
+                #     }, 'val', epoch)
+            self.hr_logged = True
 
         for key in result:
             result[key] /= len(self.val_loader)
@@ -191,14 +204,15 @@ class Trainer:
     def train(self, num_epochs):
         best_lsdh = float('inf')
         # torch.autograd.set_detect_anomaly(True)
-
+        global_step = 0
         for epoch in range(1,num_epochs+1):
             train_result={}
             progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}/{num_epochs}')
 
             for hr, lr, cond, _, _ in progress_bar:
+                global_step += 1
                 hr, lr, cond = hr.to(self.device), lr.to(self.device), cond.to(self.device)
-                step_result = self.train_step(hr, lr, cond)
+                step_result = self.train_step(hr, lr, cond, step=global_step)
 
                 # Sum up step losses for logging purposes
                 for key, value in step_result.items():
@@ -212,9 +226,8 @@ class Trainer:
                     
             for key in train_result: # mean epoch loss
                 train_result[key] /= len(self.train_loader)
-            print(train_result)
-            # print(len(self.train_loader))
-            self.unified_log(train_result, 'train', epoch=epoch)
+            # print(train_result)
+            # self.unified_log(train_result, 'train', epoch=epoch)
 
             val_result = self.validate(epoch)
             # print(val_result)
@@ -225,3 +238,6 @@ class Trainer:
                 print(f"Ckpt saved at {self.config['train']['ckpt_save_dir']} with LSDH {val_result['LSD_H']:.4f}")
                 self.save_checkpoint(epoch, val_result, save_path=self.config['train']['ckpt_save_dir'])
 
+            # update scheduler
+            self.scheduler_G.step()
+            self.scheduler_D.step()
