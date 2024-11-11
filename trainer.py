@@ -144,7 +144,7 @@ class Trainer:
                 result['codebook_loss'] += codebook_loss.item() if codebook_loss else 0
 
                 # Data logging
-                if i in [0,5,11]:  
+                if i in [0,5,13]:  
                     if not self.hr_logged:
                         self.unified_log({
                             f'audio_hr_{i}': hr.squeeze().cpu().numpy(),

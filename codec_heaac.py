@@ -6,7 +6,7 @@ def process_files(org_dir, save_compressed_basedir, save_wav_basedir, codec, bit
     print(org_dir)
     for root, dirs, files in os.walk(org_dir):
         for file_name in files:
-            if file_name.endswith(('.flac')):
+            if file_name.endswith(('.wav')):
                 relative_path = os.path.relpath(root, org_dir)
                 file_basename = os.path.splitext(file_name)[0]
                 input_file = os.path.join(root, file_name)
@@ -71,8 +71,8 @@ def get_convert_command(input_file, output_file):
 # save_compressed_basedir = "/home/woongjib/Projects/Dataset/MUSDB_CORE_M4a"
 # save_wav_basedir = "/home/woongjib/Projects/SBR/aac_analysis/temptemptemp"
 
-org_dir = "/mnt/hdd/Dataset/VCTK-Corpus-0.92_crop"
-save_compressed_basedir = "/home/woongjib/Projects/Dataset/VCTK_CORE_M4a"
+org_dir = "/home/woongjib/Projects/Dataset_BESSL/USAC44_mono_48k"
+save_compressed_basedir = "/home/woongjib/Projects/SBR/aac_analysis/samples"
 save_wav_basedir = "/home/woongjib/Projects/SBR/aac_analysis/temptemptemp"
 
 codec = 'fdk_aac_he1'  # Codec to use for compression

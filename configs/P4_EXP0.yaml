@@ -1,16 +1,14 @@
 random_seed: 0b011011
-run_name: "EXP0_Temp"
-# blind
+run_name: "EXP0"
+# LPF Extend only
 
 #-----------------------------------------------
 #1. Dataset
 #-----------------------------------------------
 
 dataset:
-  ratio: 0.001
-  # ratio: 1
-  enhance: True
-
+  # ratio: 0.001
+  ratio: 1
   wb_train: [
               "/home/woongjib/Projects/Dataset_BESSL/Dataset_gt_crop/FSD50K_CORE_M4a",  
               "/home/woongjib/Projects/Dataset_BESSL/Dataset_gt_crop/MUSDB_CORE_M4a", 
@@ -22,10 +20,10 @@ dataset:
               "/home/woongjib/Projects/Dataset_BESSL/Dataset_LPF_crop/VCTK_CORE_M4a"
               ]  
   wb_test: [
-              "/home/woongjib/Projects/USAC44_mono_48k", 
+              "/home/woongjib/Projects/Dataset_BESSL/USAC44_mono_48k", 
               ]
   nb_test: [
-              "/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop", 
+              "/home/woongjib/Projects/Dataset_BESSL/USAC44_mono_48k_core", 
               ]
 
   batch_size: 8
@@ -96,8 +94,8 @@ optim:
 #-----------------------------------------------
 train:
   val_epoch: 1
-  ckpt_save_dir: "./ckpts/temp2"
-  max_epochs: 20
+  ckpt_save_dir: "./ckpts/P4EXP0"
+  max_epochs: 100
 
   # True if load from previous
   ckpt: False

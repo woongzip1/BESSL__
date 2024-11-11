@@ -58,37 +58,6 @@ class CustomDataset(Dataset):
         
         else: # Extend only dataset ---> need to be modified
             pass
-            #     # """
-            #     # dataset = CustomDataset(["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 
-            #     #         ["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 0.9, enhance=False)
-            #     # """
-            #     # number of dataset -> ['path1','path2']
-            # for i in range(len(path_dir_nb)):
-            #     self.path_dir_nb = path_dir_nb[i]
-            #     self.path_dir_wb = path_dir_wb[i]
-
-            #     wb_files = get_audio_paths(self.path_dir_wb, file_extensions='.wav')
-            #     # nb_files = get_audio_paths(self.path_dir_nb, file_extensions='.wav')
-            #     nb_files = [path.replace('/home/woongjib/Projects/Dataset/', '/mnt/hdd/Dataset_BESSL/') for path in wb_files]
-            #     nb_files = [path.replace('WB_SEGMENT', 'LPF') for path in nb_files]
-                
-            #     paths_wav_wb.extend(wb_files)
-            #     paths_wav_nb.extend(nb_files)
-
-            #     # Assign labels based on path1, path2
-            #     self.labels.extend([i] * len(wb_files)) 
-            #     self.path_lengths[f'idx{i}len'] = len(wb_files)
-            #     print(f"Index:{i} with {len(wb_files)} samples")
-
-            # print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
-
-            # if len(paths_wav_wb) != len(paths_wav_nb):
-            #     sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
-
-            # # make filename wb-nb        
-            # self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
-            # print(f"{mode}: {len(self.filenames)} files loaded")
-
 
     def get_class_counts(self):
         return [self.path_lengths[f'idx{i}len'] for i in range(len(self.path_lengths))]
