@@ -13,9 +13,16 @@ kmeans/*
 configs/*
 temp/*
 
-!configs/exp3_rvq.yaml
+# !configs/exp3_rvq.yaml
+!configs/exp4_blind.yaml
 
 draw_losscurve.ipynb
 demo_eval___*.ipynb
 demo_eval___*.ipynb
 *.ipynb
+
+preprocess_*.py
+temp.py
+trainer_.py
+discriminator_DAC.py
+loss.py

@@ -113,12 +113,14 @@ def main():
     # 1 sec
    
     # # For HE-AAC
-    path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
-    path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_Crop"]
+    # path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
+    # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_Crop"]
     
     # USACMonoDataset
-    # path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
+    path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
+    path_nb = ["/home/woongjib/Projects/SBR/aac_analysis/core"] # core
     # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop"]
+
     dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val", high_index=31)
 
     ################### Model
@@ -143,22 +145,24 @@ def main():
     # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D32_md16_extend/epoch_10_lsdH_0.320.pth")
     # output_dir = "outputs/D32md16_extend_"
 
-    # md 20
-    # model = SEANet_TFiLM_nokmod(min_dim=8, visualize=False, in_channels=64)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64_md8_extend/epoch_34_lsdH_0.348.pth")
-    # output_dir = "outputs/D64min8_extend"
-
+    # md 16
+    model = SEANet_TFiLM_nokmod(min_dim=16, visualize=False, in_channels=32)
+    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/EXP1.2/epoch_2_lsdH_0.552.pth")
+    output_dir = "outputs/EXP0-E1_core"
+    # output_dir = "outputs/D32min16_enhance_core"
+    
     # Blind
-    # model = SEANet()
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpt_baseline/epoch_26_lsdH_0.550.pth")
-
+    # model = SEANet(min_dim=16)
+    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/EXP4/epoch_1_lsdH_0.709.pth")
+    # output_dir = "outputs/EXP4_core"
+    
     # RVQ - EXP3
     # model = SEANet_TFiLM_RVQ(in_channels=32, min_dim=16)
     # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/EXP3/epoch_5_lsdH_0.575.pth")
     # output_dir = "outputs/EXP3"
     rvq = False
 
-    output_dir = 'outputs/temptemp'
+    # output_dir = 'outputs/temptemp'
     # os dir
     os.makedirs(output_dir, exist_ok=True)
 
@@ -185,23 +189,23 @@ def main():
         wb, nb, spec, name, label = dataset[idx]
         print(f"Processing: {name}", end="\r")
 
-        # with torch.no_grad():
-        #     if not rvq:
-        #         recon = model(nb.to(DEVICE), spec.to(DEVICE)).detach()
-        #     else:
-        #         recon,_,_ = model(nb.to(DEVICE), spec.to(DEVICE))
+        with torch.no_grad():
+            if not rvq:
+                recon = model(nb.to(DEVICE), spec.to(DEVICE)).detach()
+            else:
+                recon,_,_ = model(nb.to(DEVICE), spec.to(DEVICE))
 
-        recon = nb
+        # recon = nb
         
         # LSD 계산
-        lsd = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000) 
+        lsd = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=0, cutoff_freq=4500) 
         print(lsd)
         lsd_list.append(lsd)        
         # LSD 계산
         lsd_high = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=4500, cutoff_freq=12000)
         lsd_highlist.append(lsd_high)
 
-        lsd_high2 = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=0, cutoff_freq=4500)
+        lsd_high2 = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=12000, cutoff_freq=24000)
         lsd_highlist2.append(lsd_high2)
 
         # draw_spec을 사용해 스펙트로그램을 생성하고 저장
@@ -211,18 +215,18 @@ def main():
 
         # 하나의 큰 그림으로 합쳐서 저장
         visualize_combined_spectrogram(wb_spec, nb_spec, recon_spec, index=idx, name=name, output_dir=output_dir, vmin=-50, vmax=40,
-                                       save_separate=False, plot_colorbar=False)
+                                       save_separate=True, plot_colorbar=False)
 
         from utils import lpf
         recon_lpf = lpf(recon.cpu().squeeze(), sr=48000, cutoff=4500) # lpf
         recon_lpf2 = lpf(recon.cpu().squeeze(), sr=48000, cutoff=12000) # lpf
         gt_lpf = lpf(wb.cpu().squeeze(), sr=48000, cutoff=4500) # lpf
         
-        # sf.write(f"{output_dir}/{name}_lpf.wav", recon_lpf.squeeze(), format="WAV", samplerate=48000)
-        # sf.write(f"{output_dir}/{name}_12lpf.wav", recon_lpf2.squeeze(), format="WAV", samplerate=48000)
-        # sf.write(f"{output_dir}/{name}_gtlpf.wav", gt_lpf.squeeze(), format="WAV", samplerate=48000)
-        # sf.write(f"{output_dir}/{name}.wav", recon.cpu().squeeze(), format="WAV", samplerate=48000)
-        # sf.write(f"{output_dir}/{name}_gt.wav", wb.cpu().squeeze(), format="WAV", samplerate=48000)
+        sf.write(f"{output_dir}/{name}_lpf.wav", recon_lpf.squeeze(), format="WAV", samplerate=48000)
+        sf.write(f"{output_dir}/{name}_12lpf.wav", recon_lpf2.squeeze(), format="WAV", samplerate=48000)
+        sf.write(f"{output_dir}/{name}_gtlpf.wav", gt_lpf.squeeze(), format="WAV", samplerate=48000)
+        sf.write(f"{output_dir}/{name}.wav", recon.cpu().squeeze(), format="WAV", samplerate=48000)
+        sf.write(f"{output_dir}/{name}_gt.wav", wb.cpu().squeeze(), format="WAV", samplerate=48000)
         # sf.write(f"{output_dir}/{name}_nb.wav", nb.cpu().squeeze(), format="WAV", samplerate=48000)
     
     # LSD 및 LSD High 평균 계산 및 출력
@@ -237,7 +241,7 @@ def main():
     with open(log_file, 'a') as f:
         f.write(f"Average LSD: {average_lsd:.4f}\n")
         f.write(f"Average LSD High: {average_lsd_high:.4f}\n")
-        f.write(f"Average LSD low: {average_lsd_high_high:.4f}\n")
+        f.write(f"Average LSD High2: {average_lsd_high_high:.4f}\n")
 
 if __name__ == "__main__":
     main()

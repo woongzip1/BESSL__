@@ -12,46 +12,50 @@ import librosa
 
 import wandb
 
-def prepare_generator(config, MODEL_MAP):
-    gen_type = config['model']['generator']
-    # Get the model class from the map
-    if gen_type not in MODEL_MAP:
-        raise ValueError(f"Unsupported generator type: {gen_type}")
-    ModelClass = MODEL_MAP[gen_type]
+def prepare_discriminator(config):
+    from discriminator import MultiBandSTFTDiscriminator, SSDiscriminatorBlock
+    disc_type = config['discriminator']['type']
 
-    # Base parameters
-    model_params = {
-        "min_dim": config['model']['min_dim'],
-        "causality": True
-    }
-    # Add additional parameters based on generator type
-    if gen_type == "SEANet_TFiLM":
-        model_params['kmeans_model_path'] = config['model']['kmeans_path']
-    if gen_type == "SEANet_TFiLM_nokmod":
-        model_params['in_channels'] = config['model']['in_channels']
-        model_params['fe_weight_path'] = config['model']['fe_weight_path']
-        model_params['min_dim'] = config['model']['min_dim']
-        model_params['train_enc'] = config['model']['train_enc']
-    if gen_type == "SEANet_TFiLM_RVQ":
-        model_params['in_channels'] = config['model']['in_channels']
-        model_params['fe_weight_path'] = config['model']['fe_weight_path']
-        model_params['min_dim'] = config['model']['min_dim']
-        model_params['train_enc'] = config['model']['train_enc']
-
-        # fe weight path
-
-    # Instantiate the model
-    print(ModelClass)
-    generator = ModelClass(**model_params)
-    trainable_params = sum(p.numel() for p in generator.parameters() if p.requires_grad) / 1_000_000
+    if disc_type == "MultiBandSTFTDiscriminator":
+        disc_config = config["discriminator"]['MultiBandSTFTDiscriminator_config']
+        discriminator = SSDiscriminatorBlock(
+            sd_num=len(disc_config['n_fft_list']),
+            C=disc_config['C'],
+            n_fft_list=disc_config['n_fft_list'],
+            hop_len_list=disc_config['hop_len_list'],
+            sd_mode='BS',
+            band_split_ratio=disc_config['band_split_ratio']
+        )
+    else:
+        raise ValueError(f"Unsupported discriminator type: {disc_type}")
 
     # Print information about the loaded model
-    kmeans_info = os.path.splitext(os.path.basename(config['model']['kmeans_path']))[0] if 'kmeans_path' in config['model'] else 'None'
     print("########################################")
-    print(f"{gen_type} Generator: \n"
-          f"                  kmeans: {kmeans_info} \n"
-          f"                  trainable params: {trainable_params:.2f}M \n"
-          f"                  Disc: {config['model']['discriminator']},\n" )
+    print(f"Discriminator Type: {disc_type}")
+    print(f"Discriminator Parameters: {sum(p.numel() for p in discriminator.parameters() if p.requires_grad) / 1_000_000:.2f}M")
+    print("########################################")
+
+    return discriminator
+
+def prepare_generator(config, MODEL_MAP):
+    gen_type = config['generator']['type']
+    if gen_type not in MODEL_MAP:
+        raise ValueError(f"Unsupported generator type: {gen_type}")
+    
+    ModelClass = MODEL_MAP[gen_type]
+    
+    # Retrieve the parameters for the generator from the config
+    model_params = {k: v for k, v in config['generator'].items() if k not in ['type']}
+    
+    # Print information about the loaded model
+    print("########################################")
+    print(f"Instantiating {gen_type} Generator with parameters:")
+    for key, value in model_params.items():
+        print(f"  {key}: {value}")
+    
+    generator = ModelClass(**model_params)
+    print(f"{gen_type} Generator Parameters: {sum(p.numel() for p in generator.parameters() if p.requires_grad) / 1_000_000:.2f}M trainable parameters.\n")
+    print("########################################")
     
     return generator
 

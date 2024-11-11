@@ -23,12 +23,12 @@ class CustomDataset(Dataset):
         self.mode = mode
         self.sr = sr
         self.high_index = high_index
+        self.enhance = enhance
 
         paths_wav_wb = []
         paths_wav_nb = []
         self.labels = []
         self.path_lengths = {}
-        self.enhance = enhance
         
         if self.enhance: # Enhance & Extend
             # number of dataset -> ['path1','path2']
@@ -46,16 +46,15 @@ class CustomDataset(Dataset):
                 self.path_lengths[f'idx{i}len'] = len(wb_files)
                 print(f"Index:{i} with {len(wb_files)} samples")
 
-            print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
-
             if len(paths_wav_wb) != len(paths_wav_nb):
-                sys.exit(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
+                raise ValueError(f"Error: LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers are different!")
 
             # make filename wb-nb        
-            self.filenames = [(path_wav_wb, path_wav_nb) for path_wav_wb, path_wav_nb in zip(paths_wav_wb, paths_wav_nb)]
-            print(f"{mode}: {len(self.filenames)} files loaded")
+            self.filenames = list(zip(paths_wav_wb, paths_wav_nb))
+            # print(f"{mode}: {len(self.filenames)} files loaded")
+            print(f"LR {len(paths_wav_nb)} and HR {len(paths_wav_wb)} file numbers loaded!")
         
-        else: # Extend only dataset
+        else: # Extend only dataset ---> need to be modified
                 # """
                 # dataset = CustomDataset(["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 
                 #         ["/home/woongjib/Projects/Dataset/FSD50K_WB_SEGMENT", "/home/woongjib/Projects/Dataset/MUSDB_WB_SEGMENT"], 0.9, enhance=False)
@@ -107,46 +106,20 @@ class CustomDataset(Dataset):
 
         if self.seg_len > 0 and self.mode == "train": # train mode
             duration = int(self.seg_len * self.sr) #43200
-            sig_len = wav_nb.shape[-1] # 43200 
 
-            if sig_len < duration:
-                "crop out 100 nb and repeat"
-                # print('short')
-                t_start = 0
-                t_end = t_start + duration # 43200
-                wav_nb = wav_nb.repeat(1, t_end // sig_len + 1)[..., :duration]
-                wav_wb = wav_wb.repeat(1, t_end // sig_len + 1)[..., :duration]
-                wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
-                wav_wb = self.ensure_length(wav_wb, sr_nb * self.seg_len)                
-                
-            elif sig_len > duration:
-                "crop out from long data"
-                if self.enhance:
-                    t_start = np.random.randint(low=0, high=np.max([1, sig_len - duration - 2]), size=1)[0]
-                    t_end = t_start + duration
-                    wav_nb = wav_nb[...,:duration]
-                    wav_wb = wav_wb[...,:duration]
-                else: # extend only, nb:48000
-                    wav_nb = wav_nb[...,100:100+duration]
-                
-            elif sig_len == duration:
-                pass
-
-            # #### Length ensure
-            # wav_nb = self.ensure_length(wav_nb, sr_nb * self.seg_len)
-            # wav_wb = self.ensure_length(wav_wb, sr_wb * self.seg_len)
+            if wav_nb.shape[-1] < duration:
+                wav_nb = self.ensure_length(wav_nb, duration)
+                wav_wb = self.ensure_length(wav_wb, duration)
+            elif wav_nb.shape[-1] > duration:
+                start_idx = np.random.randint(0, wav_nb.shape[-1] - duration)
+                wav_nb = wav_nb[:, start_idx:start_idx + duration]
+                wav_wb = wav_wb[:, start_idx:start_idx + duration]
 
         elif self.mode == "val": 
-            # need some modifications...
-            sig_len = wav_nb.shape[-1] # 0 - 10100 <> 0 - 10100 >> 100 - 10100
-            
-            if sig_len > 43200:
-                wav_nb = wav_nb[...,100:sig_len]
-                wav_wb = wav_wb[...,:sig_len-100]
-            
-            if wav_nb.shape[-1] != wav_wb.shape[-1]:
-                ValueError(f"nb wb shapes are different! {len(wav_nb.shape[-1], len(wav_nb.shape[-1]))}")
-            
+            pass
+            # wav_nb = self.ensure_length(wav_nb, int(self.seg_len * self.sr))
+            # wav_wb = self.ensure_length(wav_wb, int(self.seg_len * self.sr))
+
         else:
             sys.exit(f"unsupported mode! (train/val)")
 

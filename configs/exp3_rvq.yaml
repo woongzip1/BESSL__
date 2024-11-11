@@ -42,24 +42,17 @@ dataset:
 #2. Model
 #-----------------------------------------------
 
-model:
-  generator: SEANet_TFiLM_RVQ
+generator:
+  type: SEANet_TFiLM_RVQ
   # hubert, w2v, wavlm
-  ms_mel_loss_config:
-            n_fft_list: [32, 64, 128, 256, 512, 1024, 2048]
-            hop_ratio: 0.25
-            mel_bin_list: [5, 10, 20, 40, 80, 160, 320]
-            reduction: mean
-            loss_ratio: 1.0
-            sr: 48000
-            fmin: 0
   kmeans_path: None
   in_channels: 32
   fe_weight_path: None
   min_dim: 16
   train_enc: True
 
-  discriminator: MBSTFTD
+discriminator: 
+  type: MultiBandSTFTDiscriminator
   MultiBandSTFTDiscriminator_config:
       C: 32
       n_fft_list: [2048, 1024, 512]
@@ -75,6 +68,15 @@ model:
 #3. Loss
 #-----------------------------------------------
 loss:
+  ms_mel_loss_config:
+            n_fft_list: [32, 64, 128, 256, 512, 1024, 2048]
+            hop_ratio: 0.25
+            mel_bin_list: [5, 10, 20, 40, 80, 160, 320]
+            reduction: mean
+            loss_ratio: 1.0
+            sr: 48000
+            fmin: 0
+
   lambda_mel_loss: 1
   lambda_fm_loss: 100
   lambda_adv_loss: 1

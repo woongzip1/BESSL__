@@ -45,7 +45,6 @@ class MultiBandSTFTDiscriminator(nn.Module):
         if len(x.size()) == 1:  # Check if the input is 1D (single sample)
             x = x.unsqueeze(0)  # Add batch and channel dimensions
         
-
         x_bands = []
         # print(f"{x.size()} X size changed")
         for n_fft, hop_length in zip(self.n_fft_list, self.hop_len_list):

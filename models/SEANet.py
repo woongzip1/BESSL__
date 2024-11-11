@@ -58,27 +58,27 @@ class SEANet(nn.Module):
         
     def forward(self, x, HR=None):
         # Length Adjustment
-        # fragment = torch.randn(0).to(x.device)
-        # if x.dim() == 3:  # N x 1 x L
-        #     sig_len = x.shape[2]
-        #     if sig_len % self.downsampling_factor != 0:
-        #         new_len = sig_len // self.downsampling_factor * self.downsampling_factor
-        #         fragment = x[:, :, new_len:].clone().to(x.device)
-        #         x = x[:, :, :new_len]
+        fragment = torch.randn(0).to(x.device)
+        if x.dim() == 3:  # N x 1 x L
+            sig_len = x.shape[2]
+            if sig_len % self.downsampling_factor != 0:
+                new_len = sig_len // self.downsampling_factor * self.downsampling_factor
+                fragment = x[:, :, new_len:].clone().to(x.device)
+                x = x[:, :, :new_len]
                 
-        # elif x.dim() == 2:  # N x L
-        #     sig_len = x.shape[1]
-        #     if sig_len % self.downsampling_factor != 0:
-        #         new_len = sig_len // self.downsampling_factor * self.downsampling_factor
-        #         fragment = x[:, new_len:].clone().to(x.device)
-        #         x = x[:, :new_len]
+        elif x.dim() == 2:  # N x L
+            sig_len = x.shape[1]
+            if sig_len % self.downsampling_factor != 0:
+                new_len = sig_len // self.downsampling_factor * self.downsampling_factor
+                fragment = x[:, new_len:].clone().to(x.device)
+                x = x[:, :new_len]
 
-        # while len(x.size()) < 3:
-        #     x = x.unsqueeze(-2)
+        while len(x.size()) < 3:
+            x = x.unsqueeze(-2)
 
-        # if sig_len % self.downsampling_factor != 0:
-        #     sig_len = sig_len // self.downsampling_factor * self.downsampling_factor
-        #     x = x[:, :, :sig_len]
+        if sig_len % self.downsampling_factor != 0:
+            sig_len = sig_len // self.downsampling_factor * self.downsampling_factor
+            x = x[:, :, :sig_len]
 
         skip = [x]
         
