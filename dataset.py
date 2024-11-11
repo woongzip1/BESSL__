@@ -17,7 +17,7 @@ class CustomDataset(Dataset):
                  "/mnt/hdd/Dataset/MUSDB18_MP3_8k"],
                  """
     def __init__(self, path_dir_nb, path_dir_wb, seg_len=0.9, sr=48000, mode="train", 
-                 start_index=5, high_index=31, enhance=True):
+                 start_index=5, high_index=31, enhance=None):
         assert isinstance(path_dir_nb, list), "PATH must be a list"
 
         self.seg_len = seg_len
@@ -25,7 +25,7 @@ class CustomDataset(Dataset):
         self.sr = sr
         self.high_index = high_index
         self.start_index = start_index
-        self.enhance = enhance
+        self.enhance = True
 
         paths_wav_wb = []
         paths_wav_nb = []

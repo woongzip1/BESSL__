@@ -52,7 +52,7 @@ def main(if_log_to_wandb, if_log_step):
     
     # Load datasets
     train_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_train'], path_dir_wb=config['dataset']['wb_train'], 
-                                  seg_len=config['dataset']['seg_len'], mode="train", enhance=config['dataset']['enhance'],
+                                  seg_len=config['dataset']['seg_len'], mode="train",
                                   start_index=config['dataset']['start_index'],high_index=31)
     val_dataset = CustomDataset(path_dir_nb=config['dataset']['nb_test'], path_dir_wb=config['dataset']['wb_test'], 
                                 seg_len=config['dataset']['seg_len'], mode="val",
@@ -98,4 +98,4 @@ def main(if_log_to_wandb, if_log_step):
     trainer.train(num_epochs=config['train']['max_epochs'])
 
 if __name__ == "__main__":
-    main(if_log_to_wandb=False, if_log_step=True)
+    main(if_log_to_wandb=True, if_log_step=True)

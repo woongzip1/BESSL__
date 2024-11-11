@@ -131,14 +131,14 @@ class Trainer:
             }
         import pdb
         # pdb.set_trace()
-        if self.if_log_step and step % 1000 == 0:
+        if self.if_log_step and step % 100 == 0:
             self.unified_log(step_result, 'train', step=step)
         return step_result
 
-    def validate(self, epoch):
+    def validate(self, step=None):
         self.generator.eval()
         self.discriminator.eval()
-        result = {key: 0 for key in ['adv_g', 'fm', 'loss_D', 'ms_mel_loss', 'commitment_loss', 'codebook_loss', 'LSD', 'LSD_H']}
+        result = {key: 0 for key in ['adv_g', 'fm', 'loss_D', 'ms_mel_loss', 'commitment_loss', 'codebook_loss', 'LSD_L', 'LSD_H']}
         
         with torch.no_grad():
             for i, (hr, lr, cond, _, _) in enumerate(tqdm(self.val_loader, desc='Validation')):
@@ -151,7 +151,7 @@ class Trainer:
                 # Compute LSD and LSD_H metrics
                 batch_lsd_l = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=0, cutoff_freq=4265)
                 batch_lsd_h = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=4265, cutoff_freq=48000)
-                result['LSD'] += batch_lsd_l
+                result['LSD_L'] += batch_lsd_l
                 result['LSD_H'] += batch_lsd_h
 
                 # Aggregate results
@@ -162,26 +162,19 @@ class Trainer:
                 result['commitment_loss'] += commitment_loss.item() if commitment_loss else 0
                 result['codebook_loss'] += codebook_loss.item() if codebook_loss else 0
 
-                # # Optionally log reports
-                # if i == 0:  
-                #     self.unified_log({
-                #         **{f'G_report_{k}': v for k, v in g_loss_report.items()},
-                #         **{f'D_report_{k}': v for k, v in d_loss_report.items()}
-                #     }, 'val', epoch)
-
                 # Data logging
-                # if i in [0,5,11]:  
-                #     if not self.hr_logged:
-                #         self.unified_log({
-                #             f'audio_hr_{i}': hr.squeeze().cpu().numpy(),
-                #             f'spec_hr_{i}': draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
-                #             # f'spec_lr_{i}': draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
-                #         }, 'val', epoch)
+                if i in [0,5,11]:  
+                    if not self.hr_logged:
+                        self.unified_log({
+                            f'audio_hr_{i}': hr.squeeze().cpu().numpy(),
+                            f'spec_hr_{i}': draw_spec(hr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
+                            # f'spec_lr_{i}': draw_spec(lr.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
+                        }, 'val', step=step)
 
-                #     self.unified_log({
-                #         f'audio_bwe_{i}': bwe.squeeze().cpu().numpy(),
-                #         f'spec_bwe_{i}': draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
-                #     }, 'val', epoch)
+                    self.unified_log({
+                        f'audio_bwe_{i}': bwe.squeeze().cpu().numpy(),
+                        f'spec_bwe_{i}': draw_spec(bwe.squeeze().cpu().numpy(),win_len=2048, sr=48000, use_colorbar=False, hop_len=1024, return_fig=True),
+                    }, 'val', step=step)
             self.hr_logged = True
 
         for key in result:
@@ -229,9 +222,9 @@ class Trainer:
             # print(train_result)
             # self.unified_log(train_result, 'train', epoch=epoch)
 
-            val_result = self.validate(epoch)
+            val_result = self.validate(global_step)
             # print(val_result)
-            self.unified_log(val_result, 'val', epoch=epoch)
+            self.unified_log(val_result, 'val', step=global_step)
             
             if val_result['LSD_H'] < best_lsdh:
                 # best_lsdh = val_result['LSD_H']
