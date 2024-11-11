@@ -17,9 +17,9 @@ dataset:
               "/home/woongjib/Projects/Dataset_BESSL/Dataset_gt_crop/VCTK_CORE_M4a"
               ]
   nb_train: [
-              "/home/woongjib/Projects/Dataset_BESSL/Dataset_core_crop/FSD50K_CORE_M4a",  
-              "/home/woongjib/Projects/Dataset_BESSL/Dataset_core_crop/MUSDB_CORE_M4a", 
-              "/home/woongjib/Projects/Dataset_BESSL/Dataset_core_crop/VCTK_CORE_M4a"
+              "/home/woongjib/Projects/Dataset_BESSL/Dataset_LPF_crop/FSD50K_CORE_M4a",  
+              "/home/woongjib/Projects/Dataset_BESSL/Dataset_LPF_crop/MUSDB_CORE_M4a", 
+              "/home/woongjib/Projects/Dataset_BESSL/Dataset_LPF_crop/VCTK_CORE_M4a"
               ]  
   wb_test: [
               "/home/woongjib/Projects/USAC44_mono_48k", 
@@ -86,7 +86,7 @@ loss:
 
 optim:
   learning_rate: 0.001
-  scheduler_gamma: 0.95
+  scheduler_gamma: 0.999997
   B1: 0.5
   B2: 0.9
 

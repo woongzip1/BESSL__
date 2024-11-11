@@ -216,6 +216,9 @@ class Trainer:
                     'loss_G': step_result.get('loss_G', 0),
                     'mel_loss': step_result.get('ms_mel_loss', 0)
                 })
+                # update scheduler
+                self.scheduler_G.step()
+                self.scheduler_D.step()
                     
             for key in train_result: # mean epoch loss
                 train_result[key] /= len(self.train_loader)
@@ -231,6 +234,4 @@ class Trainer:
                 print(f"Ckpt saved at {self.config['train']['ckpt_save_dir']} with LSDH {val_result['LSD_H']:.4f}")
                 self.save_checkpoint(epoch, val_result, save_path=self.config['train']['ckpt_save_dir'])
 
-            # update scheduler
-            self.scheduler_G.step()
-            self.scheduler_D.step()
+
