@@ -131,7 +131,7 @@ class Trainer:
             }
         import pdb
         # pdb.set_trace()
-        if self.if_log_step:
+        if self.if_log_step and step % 1000 == 0:
             self.unified_log(step_result, 'train', step=step)
         return step_result
 
