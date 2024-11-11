@@ -76,14 +76,6 @@ class Trainer:
                     f"{stage}/{key}": log,
                 }, step=epoch if epoch is not None else step)
 
-    # Temporarily unavailable
-    # def log_results(self, result, stage, epoch=None):
-    #     if epoch is not None:
-    #         for key, value in result.items():
-    #             wandb.log({f"{stage}/{key}": value}, step=epoch)
-    #     else:
-    #         wandb.log(result)
-   
     def _forward_pass(self, lr, cond):
         if self.lambda_codebook_loss != 0:
             return self.generator(lr, cond)
@@ -98,14 +90,6 @@ class Trainer:
         
         # Train generator
         self.optim_G.zero_grad()
-        loss_dict_g = {
-            'adv_g': self.lambda_adv_loss * g_loss_dict.get('adv_g', 0),
-            'fm': self.lambda_fm_loss * g_loss_dict.get('fm', 0),
-            'ms_mel_loss': self.lambda_mel_loss * ms_mel_loss_value,
-            'commitment_loss': self.lambda_commitment_loss * commitment_loss,
-            'codebook_loss': self.lambda_codebook_loss * codebook_loss
-        }
-        # loss_backward(loss_dict=loss_dict_g, loss_name_list=list(loss_dict_g.keys()), loss_weight_dict={name: 1 for name in loss_dict_g}, balancer=None)
         loss_G.backward() # mean?
         self.optim_G.step()
 
@@ -113,11 +97,8 @@ class Trainer:
         loss_D, d_loss_dict, d_loss_report = self.loss_calculator.compute_discriminator_loss(hr, bwe)
         self.optim_D.zero_grad()
         loss_D.backward()
-        loss_dict_d = {'adv_d': loss_D}
-        # loss_backward(loss_dict=loss_dict_d, loss_name_list=list(loss_dict_d.keys()), loss_weight_dict={name: 1 for name in loss_dict_d}, balancer=None)
         self.optim_D.step()
 
-        # print(ms_mel_loss_value.item())
         step_result = {
             'loss_G': loss_G.item(),
             'ms_mel_loss': ms_mel_loss_value.item(),
@@ -222,11 +203,9 @@ class Trainer:
                     
             for key in train_result: # mean epoch loss
                 train_result[key] /= len(self.train_loader)
-            # print(train_result)
-            # self.unified_log(train_result, 'train', epoch=epoch)
+            # self.unified_log(train_result, 'train', step=global_step)
 
             val_result = self.validate(global_step)
-            # print(val_result)
             self.unified_log(val_result, 'val', step=global_step)
             
             if val_result['LSD_H'] < best_lsdh:

@@ -98,4 +98,4 @@ def main(if_log_to_wandb, if_log_step):
     trainer.train(num_epochs=config['train']['max_epochs'])
 
 if __name__ == "__main__":
-    main(if_log_to_wandb=False, if_log_step=True)
+    main(if_log_to_wandb=True, if_log_step=True)

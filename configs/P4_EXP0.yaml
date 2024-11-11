@@ -86,7 +86,7 @@ loss:
 
 optim:
   learning_rate: 0.001
-  scheduler_gamma: 0.999997
+  scheduler_gamma: 0.999996
   B1: 0.5
   B2: 0.9
 
