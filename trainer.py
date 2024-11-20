@@ -131,8 +131,8 @@ class Trainer:
                 loss_D, d_loss_dict, d_loss_report = self.loss_calculator.compute_discriminator_loss(hr, bwe)
 
                 # Compute LSD and LSD_H metrics
-                batch_lsd_l = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=0, cutoff_freq=4265)
-                batch_lsd_h = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=4265, cutoff_freq=24000)
+                batch_lsd_l = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=0, cutoff_freq=4640)
+                batch_lsd_h = lsd_batch(x_batch=hr.cpu(), y_batch=bwe.cpu(), fs=48000, start=4640, cutoff_freq=24000)
                 result['LSD_L'] += batch_lsd_l
                 result['LSD_H'] += batch_lsd_h
 

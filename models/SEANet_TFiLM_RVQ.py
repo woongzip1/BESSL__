@@ -141,7 +141,7 @@ class SEANet_TFiLM(nn.Module):
             param.requires_grad = train_enc
 
         self.rvq = ResidualVectorQuantize(
-            input_dim=864,        #
+            input_dim=subband_num*32,        #
             n_codebooks=10,         # 
             codebook_size=1024,     # 
             codebook_dim=8,       # 
