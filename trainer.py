@@ -38,7 +38,8 @@ class Trainer:
         self.scheduler_D = scheduler_D
 
         self.hr_logged = False
-        
+        self.start_epoch = 1
+    
     def unified_log(self, log_dict, stage, epoch=None, step=None):
         """
         Unified logging function for wandb that handles different data types.
@@ -161,6 +162,19 @@ class Trainer:
         for key in result:
             result[key] /= len(self.val_loader)
         return result
+        
+    def load_checkpoints(self, checkpoint_path):
+        if os.path.isfile(checkpoint_path):
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            self.generator.load_state_dict(checkpoint['generator_state_dict'])
+            self.discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+            self.optim_G.load_state_dict(checkpoint['optim_G_state_dict'])
+            self.optim_D.load_state_dict(checkpoint['optim_D_state_dict'])
+            self.start_epoch = checkpoint['epoch'] + 1
+            print(f"Checkpoint loaded successfully from {checkpoint_path} at epoch {self.start_epoch}.")
+        else:
+            raise ValueError(f"No checkpoint found at {checkpoint_path}.")
+
 
     def save_checkpoint(self, epoch, val_result, save_path):
         os.makedirs(save_path, exist_ok=True)
@@ -177,9 +191,9 @@ class Trainer:
 
     def train(self, num_epochs):
         best_lsdh = float('inf')
-        # torch.autograd.set_detect_anomaly(True)
-        global_step = 0
-        for epoch in range(1,num_epochs+1):
+        global_step = (self.start_epoch-1) * len(self.train_loader)
+                
+        for epoch in range(self.start_epoch,num_epochs+1):
             train_result={}
             progress_bar = tqdm(self.train_loader, desc=f'Epoch {epoch}/{num_epochs}')
 
