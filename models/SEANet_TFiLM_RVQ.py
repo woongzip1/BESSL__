@@ -10,11 +10,10 @@ from FeatureExtractor.model import AutoEncoder
 from FeatureExtractor.model_new import AutoEncoder_new
 
 import pickle
-from transformers import HubertModel, AutoProcessor, Wav2Vec2Model, WavLMModel, AutoModel
 # from AudioMAE.feature_encoder import AudioMAEEncoder
 
 from quantize import ResidualVectorQuantize
-from vector_quantize_pytorch import ResidualVQ
+# from vector_quantize_pytorch import ResidualVQ
 
 """
 ****** Temporal FiLMing ******
@@ -115,7 +114,8 @@ class FeatureReduction(nn.Module):
 """ Total 1.27 M Parameters """
 class SEANet_TFiLM(nn.Module):
     
-    def __init__(self, min_dim=8, kmeans_model_path=None, visualize=False, fe_weight_path=None, train_enc=True, in_channels=16, **kwargs):
+    def __init__(self, min_dim=8, kmeans_model_path=None, visualize=False, 
+                 subband_num=27, fe_weight_path=None, train_enc=True, in_channels=16, **kwargs):
         # from AudioMAE.models_mae import AudioMAEEncoder
 
         super().__init__()
@@ -141,11 +141,11 @@ class SEANet_TFiLM(nn.Module):
             param.requires_grad = train_enc
 
         self.rvq = ResidualVectorQuantize(
-            input_dim=832,        #
-            n_codebooks=8,         # 
-            codebook_size=512,     # 
+            input_dim=864,        #
+            n_codebooks=10,         # 
+            codebook_size=1024,     # 
             codebook_dim=8,       # 
-            quantizer_dropout=0.1  # 
+            quantizer_dropout=0.5  # 
         )
         
     #     self.rvq = ResidualVQ(dim=832,                 # Input dimension (same as embedding dimension)
@@ -158,7 +158,7 @@ class SEANet_TFiLM(nn.Module):
         
 
         # Feature Extracted SSL Layers
-        self.subband_num = 26
+        self.subband_num = subband_num
         self.EmbeddingReduction = FeatureReduction(self.subband_num, D=in_channels*8)
         
         self.FiLM_e1 = FiLMLayer(subband_num=self.subband_num, n_channels=self.min_dim*2, visualize=self.visualize)

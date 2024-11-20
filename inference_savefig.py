@@ -1,8 +1,12 @@
+from visqol.pb2 import visqol_config_pb2
+from visqol.pb2 import similarity_result_pb2
+from visqol import visqol_lib_py
+
+from tqdm import tqdm
+import sys
 import torch
 import numpy as np
 import os
-from tqdm import tqdm
-import torchaudio as ta
 import matplotlib.pyplot as plt
 
 from models.SEANet import SEANet
@@ -12,12 +16,21 @@ from models.SEANet_TFiLM_nok_modified import SEANet_TFiLM as SEANet_TFiLM_nokmod
 from models.SEANet_TFiLM_RVQ import SEANet_TFiLM as SEANet_TFiLM_RVQ
 
 from dataset import CustomDataset
-from utils import draw_spec, lsd_batch
-import torch.nn.functional as F
+from utils import draw_spec, lsd_batch, prepare_generator
+from main import load_config 
 import soundfile as sf
 
+from pesq import pesq
 
+MODEL_MAP = {
+    "SEANet_TFiLM": SEANet_TFiLM,
+    "SEANet": SEANet,
+    "SEANet_TFiLM_nokmod": SEANet_TFiLM_nokmod,
+    "SEANet_TFiLM_RVQ": SEANet_TFiLM_RVQ,
+}
 
+# DEVICE = 'cpu'
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_model(model, checkpoint_path):
     model = model.to(DEVICE)
@@ -92,156 +105,158 @@ def visualize_combined_spectrogram(wb_spec, nb_spec, recon_spec, index, name, ou
         plt.close(fig)  # Close the figure to avoid display in interactive environments
         print(f"Combined figure saved for index {index}: {output_path}", end="\r")
 
+from visqol.pb2 import visqol_config_pb2
+from visqol import visqol_lib_py
+import librosa
+import numpy as np
+import os
+import torch
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# DEVICE = "cpu"
+class ViSQOL:
+    def __init__(self, sample_rate=48000, use_speech_scoring=False, svr_model_name="libsvm_nu_svr_model.txt"):
+        self.config = visqol_config_pb2.VisqolConfig()
+        self.config.audio.sample_rate = sample_rate
+        self.config.options.use_speech_scoring = use_speech_scoring
+        self.config.options.svr_model_path = os.path.join(os.path.dirname(visqol_lib_py.__file__), "model", svr_model_name)
 
-def main():
-    ################### Data
-    # Dataloader 설정
-    # path_wb = [
-    #             "/mnt/hdd/Dataset/FSD50K_48kHz/FSD50K.eval_audio", 
-    #             "/mnt/hdd/Dataset/MUSDB18_HQ_mono_48kHz/test", 
-    #             ]
-    # path_nb = [
-    #             "/mnt/hdd/FSD50K_CORE_fir_crop/FSD50K.eval_audio", 
-    #             "/mnt/hdd/MUSDB18_CORE_fir_crop/test", 
-    #             ]
+        self.api = visqol_lib_py.VisqolApi()
+        self.api.Create(self.config)
 
-    # dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val")
- 
-    # 1 sec
-   
-    # # For HE-AAC
-    # path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
-    # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_Crop"]
-    
-    # USACMonoDataset
-    path_wb = ["/home/woongjib/Projects/USAC44_mono_48k"]
-    path_nb = ["/home/woongjib/Projects/SBR/aac_analysis/core"] # core
-    # path_nb = ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16_LPF_Crop"]
+    def measure(self, ref_audio, deg_audio):
+        ref_audio = ref_audio.astype(np.float64)
+        deg_audio = deg_audio.astype(np.float64)
+        similarity_result = self.api.Measure(ref_audio, deg_audio)
+        return similarity_result.moslqo
 
-    dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val", high_index=31)
+def calculate_visqol_score(ref_audio, deg_audio):
+    visqol = ViSQOL(sample_rate=48000, use_speech_scoring=False, svr_model_name="libsvm_nu_svr_model.txt")
+    mos_lqo = visqol.measure(ref_audio, deg_audio)
+    return mos_lqo
 
-    ################### Model
-    # # TFiLM 64
-    # model = SEANet_TFiLM(kmeans_model_path="/home/woongjib/Projects/BESSL__/kmeans/K64_MAE.pkl")
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_BESSL_AAC13.5/ckpt_K64/epoch_41_lsdH_0.441.pth")
-    
-    # # No K
-    # model = SEANet_TFiLM_nok(kmeans_model_path=None)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_BESSL_AAC13.5/ckpt_nok/epoch_13_lsdH_0.430.pth")
-    
-    # No K Modified FT
-    # model = SEANet_TFiLM_nokmod(kmeans_model_path=None, in_channels=64)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64FT_T4/epoch_10_lsdH_0.426.pth")
-    
-    # No K mod
-    # model = SEANet_TFiLM_nokmod(kmeans_model_path=None, in_channels=64)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D64m_data/epoch_44_lsdH_0.349.pth")
+###################################################################################################
 
-    # No K with different min_dim
-    # model = SEANet_TFiLM_nokmod(min_dim=16, visualize=False, in_channels=32)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/ckpt_D32_md16_extend/epoch_10_lsdH_0.320.pth")
-    # output_dir = "outputs/D32md16_extend_"
+def main(config, path_wb, path_nb, output_dir, save_files, reduce=False, measure_visqol=False):
+    import warnings
+    warnings.filterwarnings("ignore", message="MessageFactory class is deprecated.*")
+    dataset = CustomDataset(path_dir_nb=path_nb, path_dir_wb=path_wb, seg_len=1, mode="val", start_index=config['dataset']['start_index'], high_index=31)
 
-    # md 16
-    model = SEANet_TFiLM_nokmod(min_dim=16, visualize=False, in_channels=32)
-    model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/EXP1.2/epoch_2_lsdH_0.552.pth")
-    output_dir = "outputs/EXP0-E1_core"
-    # output_dir = "outputs/D32min16_enhance_core"
-    
-    # Blind
-    # model = SEANet(min_dim=16)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/EXP4/epoch_1_lsdH_0.709.pth")
-    # output_dir = "outputs/EXP4_core"
-    
-    # RVQ - EXP3
-    # model = SEANet_TFiLM_RVQ(in_channels=32, min_dim=16)
-    # model = load_model(model, "/home/woongjib/Projects/BESSL__/ckpts/EXP3/epoch_5_lsdH_0.575.pth")
-    # output_dir = "outputs/EXP3"
-    rvq = False
-
-    # output_dir = 'outputs/temptemp'
-    # os dir
     os.makedirs(output_dir, exist_ok=True)
 
-    # Random
+    model = prepare_generator(config, MODEL_MAP)
+    model = load_model(model, config['train']['ckpt_path'])
+
     torch.manual_seed(42)
     np.random.seed(42)
-    datasetlen = len(dataset)
-    # NUMSAMPLES = 8
-    # indices = torch.randperm(len(dataset))[:NUMSAMPLES]  # 랜덤하게 20개 샘플 추출
-    indices = torch.randperm(len(dataset))  # 랜덤하게 20개 샘플 추출
+    NUMSAMPLES = 16
+    indices = torch.randperm(len(dataset))
+    if reduce:
+        indices = torch.randperm(len(dataset))[0:NUMSAMPLES]
 
-    print(indices)
-    lsd_list = []
-    lsd_highlist = []
-    lsd_highlist2 = []
-
-    import warnings
-    warnings.filterwarnings("ignore", message=".*nperseg = .*")
-    warnings.filterwarnings("ignore", message=".*cudnnException.*")
-
-    # pbar = tqdm(indices, dynamic_ncols=False)
-    for idx in indices:
-        idx = idx.item()
-        wb, nb, spec, name, label = dataset[idx]
-        print(f"Processing: {name}", end="\r")
-
-        with torch.no_grad():
-            if not rvq:
-                recon = model(nb.to(DEVICE), spec.to(DEVICE)).detach()
-            else:
-                recon,_,_ = model(nb.to(DEVICE), spec.to(DEVICE))
-
-        # recon = nb
+    metrics = {
+        "LSD_Low": [],
+        "LSD_Mid": [],
+        "LSD_High": [],
+    }
+    if measure_visqol:
+        metrics["ViSQOL"]=[]
         
-        # LSD 계산
-        lsd = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=0, cutoff_freq=4500) 
-        print(lsd)
-        lsd_list.append(lsd)        
-        # LSD 계산
-        lsd_high = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=4500, cutoff_freq=12000)
-        lsd_highlist.append(lsd_high)
+    metric_calculations = [
+        ("LSD_Low", lambda wb, recon: lsd_batch(wb, recon, fs=48000, start=0, cutoff_freq=4240)),
+        ("LSD_Mid", lambda wb, recon: lsd_batch(wb, recon, fs=48000, start=4240, cutoff_freq=12000)),
+        ("LSD_High", lambda wb, recon: lsd_batch(wb, recon, fs=48000, start=4240, cutoff_freq=24000)),
+    ]
 
-        lsd_high2 = lsd_batch(wb.to('cpu').numpy(), recon.to('cpu').numpy(), fs=48000, start=12000, cutoff_freq=24000)
-        lsd_highlist2.append(lsd_high2)
+    Visqol = ViSQOL(sample_rate=48000, use_speech_scoring=False, svr_model_name="libsvm_nu_svr_model.txt")
+    bar = tqdm(range(len(dataset)))
+    for idx in bar:
+        # idx = idx.item()
+        wb, nb, spec, name, label = dataset[idx]
+        with torch.no_grad():
+            recon = model(nb.to(DEVICE), spec.to(DEVICE)) 
+            if config['generator']['type'] == "SEANet_TFiLM_RVQ":
+                recon = recon[0] # rvq model has two outputs
+            
+        for metric_name, calc_func in metric_calculations:
+            metrics[metric_name].append(calc_func(wb.to('cpu').numpy(), recon.to('cpu').numpy()))
 
-        # draw_spec을 사용해 스펙트로그램을 생성하고 저장
+        if measure_visqol:
+            # visqol_score = calculate_visqol_score(wb.to('cpu').numpy().squeeze(), recon.to('cpu').numpy().squeeze())
+            visqol_score = Visqol.measure(wb.to('cpu').numpy().squeeze(), recon.to('cpu').numpy().squeeze()) # recon
+            metrics["ViSQOL"].append(visqol_score)
+
+
+        from utils import lpf
+        recon_lpf = lpf(recon.cpu().squeeze(), sr=48000, cutoff=4240)
+        recon_lpf2 = lpf(recon.cpu().squeeze(), sr=48000, cutoff=12000)
+        gt_lpf = lpf(wb.cpu().squeeze(), sr=48000, cutoff=4240)
+        
+        if save_files:
+            sf.write(f"{output_dir}/{name}_gt.wav", wb.cpu().squeeze(), format="WAV", samplerate=48000)
+            sf.write(f"{output_dir}/{name}.wav", recon.cpu().squeeze(), format="WAV", samplerate=48000)
+            sf.write(f"{output_dir}/{name}_lpf.wav", recon_lpf.squeeze(), format="WAV", samplerate=48000)
+            sf.write(f"{output_dir}/{name}_12lpf.wav", recon_lpf2.squeeze(), format="WAV", samplerate=48000)
+            sf.write(f"{output_dir}/{name}_gtlpf.wav", gt_lpf.squeeze(), format="WAV", samplerate=48000)
+            sf.write(f"{output_dir}/{name}_core.wav", nb.squeeze(), format="WAV", samplerate=48000)
+        # print(idx,'\r')
+
         wb_spec = draw_spec(wb.cpu().squeeze().numpy(), sr=48000, return_fig=False, vmin=-50, vmax=40)
         nb_spec = draw_spec(nb.cpu().squeeze().numpy(), sr=48000, return_fig=False, vmin=-50, vmax=40)
         recon_spec = draw_spec(recon.cpu().squeeze().numpy(), sr=48000, return_fig=False, vmin=-50, vmax=40)
+        visualize_combined_spectrogram(wb_spec, nb_spec, recon_spec, index=idx, name=name, output_dir=output_dir, vmin=-50, vmax=40, save_separate=False, plot_colorbar=False)
 
-        # 하나의 큰 그림으로 합쳐서 저장
-        visualize_combined_spectrogram(wb_spec, nb_spec, recon_spec, index=idx, name=name, output_dir=output_dir, vmin=-50, vmax=40,
-                                       save_separate=True, plot_colorbar=False)
+    for metric_name, values in metrics.items():
+        avg_value = sum(values) / len(values)
+        print(f"Average {metric_name}: {avg_value:.4f}")
+        # sys.stdout.flush()  
 
-        from utils import lpf
-        recon_lpf = lpf(recon.cpu().squeeze(), sr=48000, cutoff=4500) # lpf
-        recon_lpf2 = lpf(recon.cpu().squeeze(), sr=48000, cutoff=12000) # lpf
-        gt_lpf = lpf(wb.cpu().squeeze(), sr=48000, cutoff=4500) # lpf
-        
-        sf.write(f"{output_dir}/{name}_lpf.wav", recon_lpf.squeeze(), format="WAV", samplerate=48000)
-        sf.write(f"{output_dir}/{name}_12lpf.wav", recon_lpf2.squeeze(), format="WAV", samplerate=48000)
-        sf.write(f"{output_dir}/{name}_gtlpf.wav", gt_lpf.squeeze(), format="WAV", samplerate=48000)
-        sf.write(f"{output_dir}/{name}.wav", recon.cpu().squeeze(), format="WAV", samplerate=48000)
-        sf.write(f"{output_dir}/{name}_gt.wav", wb.cpu().squeeze(), format="WAV", samplerate=48000)
-        # sf.write(f"{output_dir}/{name}_nb.wav", nb.cpu().squeeze(), format="WAV", samplerate=48000)
-    
-    # LSD 및 LSD High 평균 계산 및 출력
-    average_lsd = sum(lsd_list) / len(lsd_list)
-    average_lsd_high = sum(lsd_highlist) / len(lsd_highlist)
-    average_lsd_high_high = sum(lsd_highlist2) / len(lsd_highlist2)
+    log_file_path = f"{output_dir}/log.txt"
+    with open(log_file_path, "w") as log_file:  # "w" mode creates a new file or overwrites an existing one
+        for metric_name, values in metrics.items():
+            avg_value = sum(values) / len(values)
+            log_file.write(f"Average {metric_name}: {avg_value:.4f}\n")
+            # log_file.flush()  
 
-    print(f"\nAverage LSD for the 20 samples: {average_lsd:.4f}")
-    print(f"Average LSD High for the 20 samples: {average_lsd_high:.4f}")
-
-    log_file = f"{output_dir}/log.txt"
-    with open(log_file, 'a') as f:
-        f.write(f"Average LSD: {average_lsd:.4f}\n")
-        f.write(f"Average LSD High: {average_lsd_high:.4f}\n")
-        f.write(f"Average LSD High2: {average_lsd_high_high:.4f}\n")
-
+import argparse
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run inference with specified config.")
+    ## ckpts/P4EXP1/P4_EXP1.yaml
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration file.")
+    parser.add_argument("--device", type=str, required=True, default='cuda')
+    args = parser.parse_args()
+    
+    # Load common configuration
+    config = load_config(args.config)
+    DEVICE = args.device
+    
+    # Define datasets
+    datasets = [
+        {
+            "name": "Audio",
+            "path_wb": ["/home/woongjib/Projects/Dataset_BESSL/USAC44_mono_48k"],
+            "path_nb": ["/home/woongjib/Projects/Dataset_BESSL/USAC44_mono_48k_core"],
+            "output_dir": config['eval']['eval_dir_audio']
+        },
+
+        {
+            "name": "Speech",
+            "path_wb": ["/home/woongjib/Projects/Dataset_BESSL/DAPS_gt_small"],
+            "path_nb": ["/home/woongjib/Projects/Dataset_BESSL/DAPS_core_small"],
+            "output_dir": config['eval']['eval_dir_speech']
+        },
+
+        # {
+        #     "name": "SBR",
+        #     "path_wb": ["/home/woongjib/Projects/USAC44_mono_48k"],
+        #     "path_nb": ["/home/woongjib/Projects/USAC44_mono_48k_HEAAC16"],
+        #     "output_dir": "outputs/SBR"
+        # }
+    ]
+
+    # Run main for each dataset
+    for dataset in datasets:
+        print(f"\nProcessing {dataset['name']} Dataset:")
+        main(config, dataset["path_wb"], dataset["path_nb"], dataset["output_dir"], save_files=True, reduce=False, measure_visqol=True)
+
+
+
+

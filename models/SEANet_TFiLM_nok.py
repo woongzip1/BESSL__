@@ -8,8 +8,6 @@ from einops import rearrange
 
 from FeatureExtractor.model import AutoEncoder
 import pickle
-from transformers import HubertModel, AutoProcessor, Wav2Vec2Model, WavLMModel, AutoModel
-# from AudioMAE.feature_encoder import AudioMAEEncoder
 
 """
 ****** Temporal FiLMing ******

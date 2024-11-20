@@ -91,6 +91,9 @@ def main(if_log_to_wandb, if_log_step):
     trainer = Trainer(generator, discriminator, train_loader, val_loader, optim_G, optim_D, config, DEVICE, 
                       scheduler_G=scheduler_G, scheduler_D=scheduler_D, if_log_step=if_log_step, if_log_to_wandb=if_log_to_wandb)
     
+    if config['train']['ckpt']:
+        trainer.load_checkpoints(config['train']['ckpt_path'])    
+    
     torch.manual_seed(42)
     random.seed(42)
     # Train

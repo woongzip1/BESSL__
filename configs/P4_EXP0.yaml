@@ -99,4 +99,9 @@ train:
 
   # True if load from previous
   ckpt: False
-  ckpt_path: ""
+  ckpt_path: "/home/woongjib/Projects/BESSL__/ckpts/P4EXP0/epoch_6_lsdh_0.4748.pth"
+
+eval:
+  eval_dir_audio: "/home/woongjib/Projects/BESSL__/outputs/P4EXP0_audio"
+  eval_dir_speech: "/home/woongjib/Projects/BESSL__/outputs/P4EXP0_speech"
+

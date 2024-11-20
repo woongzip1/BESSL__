@@ -39,6 +39,7 @@ def prepare_discriminator(config):
 
 def prepare_generator(config, MODEL_MAP):
     gen_type = config['generator']['type']
+    
     if gen_type not in MODEL_MAP:
         raise ValueError(f"Unsupported generator type: {gen_type}")
     
